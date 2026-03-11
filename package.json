@@ -1,0 +1,23 @@
+{
+  "name": "stellar-sdk-complete-test",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:snapshots": "vitest run src/sdk-snapshots.test.ts",
+    "test:snapshots:update": "vitest run src/sdk-snapshots.test.ts -u"
+  },
+  "devDependencies": {
+    "@types/node": "^24.5.2",
+    "@vitest/coverage-v8": "^4.0.18",
+    "nock": "^14.0.11",
+    "typescript": "~5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "dependencies": {
+    "@stellar/stellar-sdk": "^14.6.1"
+  }
+}
