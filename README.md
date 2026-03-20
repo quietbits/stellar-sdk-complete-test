@@ -74,6 +74,13 @@ pnpm test
 ```
 
 2. Replace `@stellar/stellar-base` (or other internal dependency under test) with your refactored version.
+   With pnpm, the actual package files live in the content-addressable store — overwrite them directly:
+
+   ```text
+   node_modules/.pnpm/@stellar+stellar-base@<version>/node_modules/@stellar/stellar-base/
+   ```
+
+   > **Note:** This is a quick local-only replacement. Any `pnpm install` will overwrite your changes.
 
 3. Re-run tests:
 
