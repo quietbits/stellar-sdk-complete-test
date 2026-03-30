@@ -206,6 +206,7 @@ describe("stellar-sdk class and method surface locks", () => {
       "toScAddress",
       "toScVal",
       "toString",
+      "type",
     ]);
 
     expect(ownMethods(Claimant)).toEqual([
