@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "./helpers/assert.ts";
 import * as ContractModule from "@stellar/stellar-sdk/contract";
 import * as RpcModule from "@stellar/stellar-sdk/rpc";
 import * as StellarSdk from "@stellar/stellar-sdk";

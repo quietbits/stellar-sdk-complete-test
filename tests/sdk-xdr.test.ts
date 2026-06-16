@@ -35,7 +35,7 @@ import {
   walkInvocationTree,
   xdr,
 } from "@stellar/stellar-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "./helpers/assert.ts";
 
 describe("stellar-sdk XDR coverage", () => {
   // -------------------------------------------------------------------------

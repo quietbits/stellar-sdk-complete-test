@@ -4,18 +4,15 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:snapshots": "vitest run src/sdk-snapshots.test.ts",
-    "test:snapshots:update": "vitest run src/sdk-snapshots.test.ts -u"
+    "test:node": "node --test tests/*.test.ts",
+    "test:deno": "deno test --no-check --allow-net --allow-read --allow-env tests/",
+    "test:bun": "bun test tests/",
+    "test:all": "npm run test:node && npm run test:deno && npm run test:bun",
+    "test:pm": "bash scripts/test-pms.sh"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
-    "@vitest/coverage-v8": "^4.1.9",
-    "nock": "^14.0.15",
-    "typescript": "~6.0.3",
-    "vitest": "^4.1.9"
+    "typescript": "~6.0.3"
   },
   "dependencies": {
     "@stellar/stellar-sdk": "16.0.0"
