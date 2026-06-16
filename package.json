@@ -11,13 +11,13 @@
     "test:snapshots:update": "vitest run src/sdk-snapshots.test.ts -u"
   },
   "devDependencies": {
-    "@types/node": "^24.5.2",
-    "@vitest/coverage-v8": "^4.0.18",
-    "nock": "^14.0.11",
-    "typescript": "~5.9.3",
-    "vitest": "^4.0.18"
+    "@types/node": "^25.9.3",
+    "@vitest/coverage-v8": "^4.1.9",
+    "nock": "^14.0.15",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.9"
   },
   "dependencies": {
-    "@stellar/stellar-sdk": "16.0.0-rc.1"
+    "@stellar/stellar-sdk": "16.0.0"
   }
 }
