@@ -670,7 +670,9 @@ describe("stellar-sdk XDR coverage", () => {
       // Sanity: built entry must serialize.
       expect(() => authEntry.toXDR()).not.toThrow();
 
-      const signed = await authorizeEntry(authEntry, kp, 10);
+      // v16: authorizeEntry no longer defaults networkPassphrase to
+      // Networks.FUTURENET, so it must be passed explicitly.
+      const signed = await authorizeEntry(authEntry, kp, 10, Networks.FUTURENET);
 
       // Invocation must be untouched.
       expect(signed.rootInvocation().toXDR("base64")).toBe(
