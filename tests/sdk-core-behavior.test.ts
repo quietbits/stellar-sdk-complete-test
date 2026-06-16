@@ -18,7 +18,7 @@ import {
   scValToBigInt,
   scValToNative,
 } from "@stellar/stellar-sdk";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "./helpers/assert.ts";
 
 function buildClaimableBalanceId(
   source: Keypair,

@@ -1,0 +1,9 @@
+# Install artifacts — every sandbox is rebuilt by scripts/test-pms.sh
+*/node_modules/
+*/package-lock.json
+*/pnpm-lock.yaml
+*/yarn.lock
+
+# Yarn Berry PnP artifacts
+*/.yarn/
+*/.pnp.*

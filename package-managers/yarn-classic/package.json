@@ -1,0 +1,9 @@
+{
+  "name": "pm-smoke-yarn-classic",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.0.0"
+  }
+}

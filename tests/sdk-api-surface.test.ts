@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it } from "./helpers/assert.ts";
 import * as ContractModule from "@stellar/stellar-sdk/contract";
 import * as RpcModule from "@stellar/stellar-sdk/rpc";
 import * as StellarSdk from "@stellar/stellar-sdk";
@@ -60,11 +60,12 @@ const expectedRootExports = [
   "XdrLargeInt",
   "authorizeEntry",
   "authorizeInvocation",
+  "buildAuthorizationEntryPreimage",
   "buildInvocationTree",
+  "buildWithDelegatesEntry",
   "cereal",
   "contract",
   "decodeAddressToMuxedAccount",
-  "default",
   "encodeMuxedAccount",
   "encodeMuxedAccountToAddress",
   "extractBaseAddress",
@@ -102,7 +103,6 @@ const expectedRpcExports = [
   "LinearSleepStrategy",
   "Server",
   "assembleTransaction",
-  "default",
   "parseRawEvents",
   "parseRawSimulation",
 ].sort();
@@ -113,7 +113,6 @@ const expectedHorizonNamespaceExports = [
   "SERVER_TIME_MAP",
   "Server",
   "ServerApi",
-  "default",
   "getCurrentServerTime",
 ].sort();
 
@@ -128,15 +127,13 @@ const expectedWebAuthNamespaceExports = [
 ].sort();
 
 const expectedFederationNamespaceExports = [
-  "Api",
   "FEDERATION_RESPONSE_MAX_SIZE",
   "Server",
 ].sort();
 
-const expectedFriendbotNamespaceExports = ["Api"].sort();
+const expectedFriendbotNamespaceExports: string[] = [].sort();
 
 const expectedStellarTomlNamespaceExports = [
-  "Api",
   "Resolver",
   "STELLAR_TOML_MAX_SIZE",
 ].sort();

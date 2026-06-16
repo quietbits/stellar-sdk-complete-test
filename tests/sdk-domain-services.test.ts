@@ -1,5 +1,3 @@
-import nock from "nock";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import {
   Federation,
   Keypair,
@@ -7,20 +5,15 @@ import {
   StellarToml,
   WebAuth,
 } from "@stellar/stellar-sdk";
+import { describe, expect, it } from "./helpers/assert.ts";
+import { startServer } from "./helpers/server.ts";
+
+/** Strip the scheme so a value can be used as a `host:port` "domain". */
+function hostOf(url: string): string {
+  return url.replace(/^https?:\/\//, "");
+}
 
 describe("stellar-sdk domain service behavior", () => {
-  beforeAll(() => {
-    nock.disableNetConnect();
-  });
-
-  afterEach(() => {
-    nock.cleanAll();
-  });
-
-  afterAll(() => {
-    nock.enableNetConnect();
-  });
-
   it("builds and reads SEP-10 challenge transactions", () => {
     const serverKeypair = Keypair.random();
     const clientKeypair = Keypair.random();
@@ -87,34 +80,38 @@ describe("stellar-sdk domain service behavior", () => {
     ).rejects.toThrow("Invalid Account ID");
   });
 
-  it("resolves stellar addresses via federation server discovered from stellar.toml", async () => {
-    const domain = "acme.test";
+  it("resolves stellar addresses via a federation server", async () => {
+    // NOTE: the SDK validates the domain (RFC 1035) on the toml-discovery path,
+    // so a loopback "127.0.0.1:port" domain can't drive `Federation.Server.resolve`.
+    // We exercise the federation query/parse directly — the runtime-relevant
+    // HTTP behavior — while toml fetch/parse is covered by the tests below.
     const accountId = Keypair.random().publicKey();
 
-    const tomlScope = nock(`http://${domain}`)
-      .get("/.well-known/stellar.toml")
-      .reply(
-        200,
-        `FEDERATION_SERVER=\"http://federation.${domain}/federation\"`,
-      );
-
-    const federationScope = nock(`http://federation.${domain}`)
-      .get("/federation")
-      .query({ type: "name", q: `bob*${domain}` })
-      .reply(200, {
-        stellar_address: `bob*${domain}`,
-        account_id: accountId,
-        memo_type: "id",
-        memo: "123",
-      });
-
-    const result = await Federation.Server.resolve(`bob*${domain}`, {
-      allowHttp: true,
+    const server = await startServer((req) => {
+      if (req.pathname === "/federation") {
+        return {
+          json: {
+            stellar_address: req.query.get("q"),
+            account_id: accountId,
+            memo_type: "id",
+            memo: "123",
+          },
+        };
+      }
+      return { status: 404, json: { error: "not found" } };
     });
 
-    expect(result.account_id).toBe(accountId);
-    tomlScope.done();
-    federationScope.done();
+    try {
+      const federation = new Federation.Server(
+        `${server.url}/federation`,
+        "example.org",
+        { allowHttp: true },
+      );
+      const result = await federation.resolveAddress("bob*example.org");
+      expect(result.account_id).toBe(accountId);
+    } finally {
+      await server.close();
+    }
   });
 
   it("throws for insecure federation server when allowHttp is not set", () => {
@@ -125,38 +122,33 @@ describe("stellar-sdk domain service behavior", () => {
   });
 
   it("parses valid stellar.toml payloads", async () => {
-    const domain = "toml.test";
     const signingKey = Keypair.random().publicKey();
 
-    const scope = nock(`http://${domain}`)
-      .get("/.well-known/stellar.toml")
-      .reply(
-        200,
-        `FEDERATION_SERVER=\"http://federation.${domain}/federation\"\nSIGNING_KEY=\"${signingKey}\"`,
-      );
+    const server = await startServer((_req, baseUrl) => ({
+      text: `FEDERATION_SERVER="${baseUrl}/federation"\nSIGNING_KEY="${signingKey}"`,
+    }));
 
-    const result = await StellarToml.Resolver.resolve(domain, {
-      allowHttp: true,
-    });
+    try {
+      const result = await StellarToml.Resolver.resolve(hostOf(server.url), {
+        allowHttp: true,
+      });
 
-    expect(result.FEDERATION_SERVER).toBe(
-      `http://federation.${domain}/federation`,
-    );
-    expect(result.SIGNING_KEY).toBe(signingKey);
-    scope.done();
+      expect(result.FEDERATION_SERVER).toBe(`${server.url}/federation`);
+      expect(result.SIGNING_KEY).toBe(signingKey);
+    } finally {
+      await server.close();
+    }
   });
 
   it("throws for invalid stellar.toml payloads", async () => {
-    const domain = "bad-toml.test";
+    const server = await startServer(() => ({ text: "NOT = valid = toml" }));
 
-    const scope = nock(`http://${domain}`)
-      .get("/.well-known/stellar.toml")
-      .reply(200, "NOT = valid = toml");
-
-    await expect(
-      StellarToml.Resolver.resolve(domain, { allowHttp: true }),
-    ).rejects.toThrow("stellar.toml is invalid");
-
-    scope.done();
+    try {
+      await expect(
+        StellarToml.Resolver.resolve(hostOf(server.url), { allowHttp: true }),
+      ).rejects.toThrow("stellar.toml is invalid");
+    } finally {
+      await server.close();
+    }
   });
 });

@@ -1,0 +1,10 @@
+{
+  "name": "pm-smoke-yarn-berry",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "packageManager": "yarn@4.5.0",
+  "dependencies": {
+    "@stellar/stellar-sdk": "16.0.0"
+  }
+}
