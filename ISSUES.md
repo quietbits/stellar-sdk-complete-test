@@ -5,13 +5,19 @@ repo. Each issue is reproducible with the commands in [README.md](README.md).
 
 | # | Issue | Severity | Surface | Regression? |
 |---|-------|----------|---------|-------------|
-| 1 | SDK fails to load under Yarn Berry (PnP) | **High** | install/resolution | **Yes — new in v16** (v15.1.0 works) |
+| 1 | SDK fails to load under Yarn Berry (PnP) — ✅ **fixed in [#1484](https://github.com/stellar/js-stellar-sdk/pull/1484)** | **High** | install/resolution | **Yes — new in v16** (v15.1.0 works) |
 | 2 | Published types lag the runtime API | Medium | TypeScript DX | Not assessed (API differs across majors) |
 | 3 | Hand-rolled ledger XDR fixtures don't decode | Low | test data only | N/A (harness data) |
 
 ---
 
 ## Issue 1 — SDK fails to load under Yarn Berry Plug'n'Play
+
+> **✅ Fixed in [PR #1484](https://github.com/stellar/js-stellar-sdk/pull/1484).**
+> Verified with this harness: building the `js-xdr-yarn-pnp-fix` branch, packing it,
+> and installing the tarball makes the `yarn-berry` (PnP) sandbox **PASS** — previously
+> FAIL-by-design — with no regression across npm/pnpm/yarn-classic or the Node/Deno/Bun
+> runtime axes. The analysis below documents the original v16.0.0 defect.
 
 **Severity: High** — the package is completely unusable under Yarn Berry PnP
 (the default Yarn ≥ 2 install mode). Reproduce with `npm run test:pm`
