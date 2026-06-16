@@ -6,8 +6,8 @@ repo. Each issue is reproducible with the commands in [README.md](README.md).
 | # | Issue | Severity | Surface | Regression? |
 |---|-------|----------|---------|-------------|
 | 1 | SDK fails to load under Yarn Berry (PnP) — ✅ **fixed in [#1484](https://github.com/stellar/js-stellar-sdk/pull/1484)** | **High** | install/resolution | **Yes — new in v16** (v15.1.0 works) |
-| 2 | Published types lag the runtime API | Medium | TypeScript DX | Not assessed (API differs across majors) |
-| 3 | Hand-rolled ledger XDR fixtures don't decode | Low | test data only | N/A (harness data) |
+| 2 | Published types lag the runtime API — ⏳ XDR-primitive half blocked on the TS/ESM js-xdr release; RPC-layer half is residual SDK work | Medium | TypeScript DX | Not assessed (API differs across majors) |
+| 3 | Hand-rolled ledger XDR fixtures don't decode — ✔️ mitigated (covered live); no SDK fix needed | Low | test data only | N/A (harness data) |
 
 ---
 
@@ -97,6 +97,16 @@ mitigation, not a fix.
 
 ## Issue 2 — Published TypeScript types lag the runtime API
 
+> **⏳ Plan: wait-and-residual.** The root cause splits in two. The XDR-primitive
+> gaps (`Int256.fromString`/`.slice`, `Memo.arm()`, `bigint` → `Int64`/`Uint64`)
+> exist because `@stellar/js-xdr@4.0.0` ships **no TypeScript types** at all — the
+> SDK's `Int256 extends LargeInt` inherits an untyped base. The upcoming TS/ESM
+> rewrite of `js-xdr` is expected to ship real `.d.ts` for `LargeInt`/`Int64`/union
+> accessors, which should resolve these for free. **Don't hand-write those types
+> now** — they'd be superseded. Once the new `js-xdr` lands, re-run the Deno
+> type-check and fix only the **residual RPC-layer types** below, which are the
+> SDK's own code and unaffected by `js-xdr`.
+
 **Severity: Medium** — runtime works, but TypeScript consumers get false errors.
 Surfaced because Deno type-checks by default (Node/Bun and the old Vitest setup
 did not); see the `--no-check` note in [README.md](README.md).
@@ -122,14 +132,19 @@ don't accept `bigint`).
 
 ### Proposed fix (SDK side)
 
-Update the type definitions to match runtime:
-- Add `fromString` / `slice` (and any sibling `XdrLargeInt` methods) to the
-  large-int types.
-- Add `arm()` to `Memo`.
+Update the type definitions to match runtime, in two groups:
+
+**Blocked on / expected from the TS/ESM `js-xdr` release — do not hand-write now:**
+
+- `fromString` / `slice` (and sibling `XdrLargeInt` methods) on the large-int types.
+- `arm()` on `Memo` (a `js-xdr` union accessor).
+- Allow `bigint` where XDR `Int64`/`Uint64` fields are constructed.
+
+**Residual SDK-owned work — fix after re-measuring against the new `js-xdr`:**
+
 - Widen the `GetTransactionResponse` union so the `SUCCESS`/`FAILED` branches
   expose `envelopeXdr` / `resultXdr` / `resultMetaXdr`.
 - Correct `parseRawEvents` / `parseRawSimulation` input and result types.
-- Allow `bigint` where XDR `Int64`/`Uint64` fields are constructed.
 
 A type-level regression guard (like `tests/sdk-api-surface.test.ts`, but
 type-checked) would catch future drift.
