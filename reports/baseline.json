@@ -1,0 +1,98 @@
+{
+  "_comment": "Expected results for the pinned SDK version. /test-latest-sdk diffs each run against this file: a failure listed in knownFailures is expected, anything else is a new finding. Never add an entry to silence a new failure -- every entry needs a reason and a deferredUntil.",
+  "sdkVersion": "16.2.0",
+  "lastVerified": "2026-07-30",
+
+  "toolchainMinimums": {
+    "node": "22.18",
+    "deno": "2.0",
+    "bun": "1.0",
+    "pnpm": "9",
+    "_comment": "Node 22.18 is a hard requirement: below it there is no native TS type-stripping and test:node cannot run. Deno and Bun below minimum are reported SKIPPED, not failed."
+  },
+
+  "toolchainVerifiedWith": {
+    "node": "22.22.0",
+    "deno": "2.8.3",
+    "bun": "1.3.14",
+    "npm": "10.9.4",
+    "pnpm": "10.33.2",
+    "yarnClassic": "1.22.22",
+    "yarnBerry": "4.5.0",
+    "corepack": "0.34.0"
+  },
+
+  "resolvedDependencies": {
+    "@stellar/js-xdr": "4.0.0",
+    "axios": "1.18.0",
+    "_comment": "The SDK pins js-xdr and axios exactly but uses ^ ranges elsewhere, so the same SDK version can resolve a different tree later."
+  },
+
+  "runtimeAxis": {
+    "_comment": "Live runs add 7 tests and remove the 1 placeholder that STELLAR_LIVE=0 substitutes, hence the 6-test delta.",
+    "deterministic": {
+      "node": { "tests": 161, "pass": 157, "fail": 4 },
+      "deno": { "passed": 14, "steps": 174, "failed": 2, "failedSteps": 4 },
+      "bun": { "pass": 156, "fail": 4 }
+    },
+    "live": {
+      "node": { "tests": 167, "pass": 163, "fail": 4 },
+      "deno": { "passed": 14, "steps": 180, "failed": 2, "failedSteps": 4 },
+      "bun": { "pass": 162, "fail": 4 }
+    }
+  },
+
+  "packageManagerAxis": {
+    "npm": "PASS",
+    "pnpm": "PASS",
+    "yarn-classic": "PASS",
+    "yarn-berry": "PASS"
+  },
+
+  "typeCheck": {
+    "tscErrors": 27,
+    "_comment": "30 at 16.0.0; 3 fixed by getContractInstance typings, 0 new. 12 blocked on the js-xdr TS/ESM release, 9 residual SDK RPC-layer, 3 further SDK gaps, 3 harness-owned. See ISSUES.md issue 2."
+  },
+
+  "knownFailures": [
+    {
+      "suite": "stellar-sdk public API surface",
+      "test": "matches expected root exports",
+      "file": "tests/sdk-api-surface.test.ts",
+      "reason": "Lock pinned to the 16.0.0 surface. 16.2.0 added TransactionFailedError, checkAuthEntryReadiness, inspectAuthEntry. Additive only -- zero removals.",
+      "deferredUntil": "v17",
+      "issue": 4
+    },
+    {
+      "suite": "stellar-sdk public API surface",
+      "test": "matches expected contract exports",
+      "file": "tests/sdk-api-surface.test.ts",
+      "reason": "Lock pinned to the 16.0.0 surface. 16.2.0 added KeypairSigner. Additive only -- zero removals.",
+      "deferredUntil": "v17",
+      "issue": 4
+    },
+    {
+      "suite": "stellar-sdk public API surface",
+      "test": "matches expected nested rpc and contract namespace exports",
+      "file": "tests/sdk-api-surface.test.ts",
+      "reason": "Same KeypairSigner addition, asserted through the nested StellarSdk.contract namespace.",
+      "deferredUntil": "v17",
+      "issue": 4
+    },
+    {
+      "suite": "stellar-sdk class and method surface locks",
+      "test": "keeps Keypair static and instance methods stable",
+      "file": "tests/sdk-method-surface.test.ts",
+      "reason": "Lock pinned to the 16.0.0 surface. 16.2.0 added signMessage, verifyMessage, and _hashMessage (declared private in the .d.ts; visible on the prototype because TypeScript private is compile-time only). Statics unchanged. Additive only -- zero removals.",
+      "deferredUntil": "v17",
+      "issue": 4
+    }
+  ],
+
+  "expectedSurface": {
+    "_comment": "Symbol counts the locks currently assert, versus what 16.2.0 actually exports. Diff by set difference, not by reading truncated assertion output: a truncated diff can hide a removal, and removals are breaking while additions are not.",
+    "rootExports": { "locked": 77, "actual": 80 },
+    "contractExports": { "locked": 10, "actual": 11 },
+    "keypairInstance": { "locked": 13, "actual": 16 }
+  }
+}

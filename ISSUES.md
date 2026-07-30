@@ -1,164 +1,123 @@
-# Issues found in `@stellar/stellar-sdk@16.0.0`
+# Issues found in `@stellar/stellar-sdk`
 
-Found while building the multi-runtime / multi-package-manager harness in this
-repo. Each issue is reproducible with the commands in [README.md](README.md).
+Found while building the multi-runtime / multi-package-manager harness in this repo. Each issue is reproducible with the commands in [README.md](README.md).
 
-| # | Issue | Severity | Surface | Regression? |
-|---|-------|----------|---------|-------------|
-| 1 | SDK fails to load under Yarn Berry (PnP) — ✅ **fixed in [#1484](https://github.com/stellar/js-stellar-sdk/pull/1484)** | **High** | install/resolution | **Yes — new in v16** (v15.1.0 works) |
-| 2 | Published types lag the runtime API — ⏳ XDR-primitive half blocked on the TS/ESM js-xdr release; RPC-layer half is residual SDK work | Medium | TypeScript DX | Not assessed (API differs across majors) |
-| 3 | Hand-rolled ledger XDR fixtures don't decode — ✔️ mitigated (covered live); no SDK fix needed | Low | test data only | N/A (harness data) |
+The pinned SDK version, the toolchain it was verified against, and the current expected pass/fail status all live in [`reports/baseline.json`](reports/baseline.json) — the single source of truth. Per-version run records are in [`reports/`](reports/). This file covers only the findings themselves, so it does not need updating when counts change.
+
+| # | Issue | Severity | Surface | Status |
+|---|-------|----------|---------|--------|
+| 1 | SDK fails to load under Yarn Berry (PnP) | **High** | install/resolution | ✅ **Fixed** |
+| 2 | Published types lag the runtime API | Medium | TypeScript DX | ⏳ **Open**, improved: 30 → 27 errors, 3 fixed, 0 new |
+| 3 | Hand-rolled ledger XDR fixtures don't decode | Low | test data only | ✔️ Mitigated (covered live); no SDK fix needed |
+| 4 | Surface locks intentionally red pending v17 | None (harness) | test expectations | 📌 **Deferred to v17** — additive-only |
 
 ---
 
 ## Issue 1 — SDK fails to load under Yarn Berry Plug'n'Play
 
-> **✅ Fixed in [PR #1484](https://github.com/stellar/js-stellar-sdk/pull/1484).**
-> Verified with this harness: building the `js-xdr-yarn-pnp-fix` branch, packing it,
-> and installing the tarball makes the `yarn-berry` (PnP) sandbox **PASS** — previously
-> FAIL-by-design — with no regression across npm/pnpm/yarn-classic or the Node/Deno/Bun
-> runtime axes. The analysis below documents the original v16.0.0 defect.
+> **✅ Fixed as of `16.2.0`.** The `yarn-berry` (PnP) sandbox now **PASSES**, alongside npm, pnpm, and Yarn classic, with no regression on the Node/Deno/Bun runtime axes. Originally reported against `16.0.0` and tracked in [PR #1484](https://github.com/stellar/js-stellar-sdk/pull/1484).
 
-**Severity: High** — the package is completely unusable under Yarn Berry PnP
-(the default Yarn ≥ 2 install mode). Reproduce with `npm run test:pm`
-(`yarn-berry` sandbox).
+### The fix is not the one this document originally proposed
 
-### Evidence
+Worth recording, because the obvious diagnostic check still looks "broken": the brittle named import is **still present verbatim** in `16.2.0`.
+
+```js
+// lib/esm/base/generated/curr_generated.js:7 — unchanged in 16.2.0
+import { config } from '../../node_modules/.pnpm/@stellar_js-xdr@4.0.0/node_modules/@stellar/js-xdr/src/config.js';
+```
+
+What changed is the **vendored** copy of `js-xdr` that path points at. It now ships its own `package.json` declaring `{"type": "module"}`, and its source uses real ESM named exports:
+
+```js
+// lib/esm/.../js-xdr/src/config.js:258
+export { Reference, config };
+```
+
+So the import is now statically analyzable ESM and never goes through Node's CJS-interop path at all — which is where PnP diverged from the `node_modules` loaders. That is effectively **proposed fix #2** ("real ESM named exports"), applied at the vendoring layer rather than by rewriting the import (#1) or de-vendoring (#3).
+
+Note this conversion to ESM happened **only inside the SDK's vendored copy**. The published `@stellar/js-xdr@4.0.0` package is unchanged — still CommonJS, still untyped — which is why issue 2 below is unaffected.
+
+### Original defect (v16.0.0), for the record
+
+`16.0.0` emitted a **named** import from a **CommonJS** `@stellar/js-xdr@4.0.0`. Node's ESM loader can only synthesize named exports from CJS when they are statically detectable via `cjs-module-lexer`; under PnP's loader the CJS-interop path differs, so detection failed:
 
 ```
-file://.../@stellar/stellar-sdk/lib/esm/base/generated/curr_generated.js:7
-import { config } from '../../node_modules/.pnpm/@stellar_js-xdr@4.0.0/node_modules/@stellar/js-xdr/src/config.js';
-         ^^^^^^
 SyntaxError: Named export 'config' not found. The requested module
 '.../@stellar/js-xdr/src/config.js' is a CommonJS module, which may not
 support all module.exports as named exports.
 ```
 
-Passes under **npm**, **pnpm**, and **Yarn classic**; fails only under
-**Yarn Berry (PnP)**.
+This was a **v16 regression**: `15.1.0` shipped CommonJS only, so PnP loaded the whole package through standard CJS interop and never reached the problem.
 
-### Regression status: NEW IN v16
-
-`@stellar/stellar-sdk@15.1.0` **loads cleanly under Yarn Berry PnP** (verified
-with the same smoke test in an isolated sandbox); `16.0.0` does not. The cause
-is a packaging change between the majors:
-
-| | v15.1.0 | v16.0.0 |
-|--|---------|---------|
-| Package `type` | (none) → CommonJS | `module` (dual build, `lib/esm/`) |
-| Primary entry | `lib/index.js` (CJS) | `lib/esm/index.js` (ESM) |
-| js-xdr edge | normal `node_modules` dep | **named import from a vendored CJS *file*** |
-
-v15 ships CommonJS only, so PnP loads the whole package through standard CJS
-interop and never hits the named-export problem. v16's new ESM build introduces
-the `import { config } from '.../js-xdr/src/config.js'` edge that Node's ESM
-loader rejects under PnP. **This is a v16 regression, not a long-standing
-limitation.**
-
-### Root cause
-
-The SDK's ESM build emits a **named** import (`import { config }`) from a
-**CommonJS** module (`@stellar/js-xdr@4.0.0`). Node's ESM loader can only
-provide named exports from a CJS module when its exports are statically
-detectable via `cjs-module-lexer`. Two things make this fail under PnP:
-
-1. Yarn PnP resolves modules through Node's experimental ESM loader API, where
-   the CJS-interop path differs from the standard `node_modules` loader that
-   npm/pnpm/yarn-classic use — so the named export isn't detected.
-2. The emitted import is a brittle deep relative path into a vendored
-   `lib/esm/node_modules/.pnpm/...` copy of `js-xdr`, which looks like a
-   build-time artifact rather than an intentional dependency edge.
-
-### Proposed fix (SDK side, in order of preference)
-
-1. **Don't emit named imports from CJS in the ESM build.** Change the generated
-   code to a default import + destructure, which Node accepts from CJS:
-   ```js
-   import jsXdr from '@stellar/js-xdr';
-   const { config } = jsXdr;
-   ```
-   This is the exact workaround Node suggests in the error message and is the
-   smallest, lowest-risk change.
-2. **Publish `@stellar/js-xdr` as a dual CJS/ESM package** with real ESM named
-   exports, so `import { config }` is statically analyzable everywhere. Cleanest
-   long-term fix but requires a release of the `js-xdr` dependency.
-3. **Stop vendoring with `.pnpm`-specific relative paths.** Have the bundler
-   either fully inline `js-xdr` or reference it as a normal bare-specifier
-   dependency (`@stellar/js-xdr`) resolved through `package.json`, instead of a
-   hardcoded path into a vendored store.
-
-### Workaround (consumer side, until fixed)
-
-Yarn Berry users can fall back to a `node_modules` install by setting
-`nodeLinker: node-modules` in `.yarnrc.yml` — but that abandons PnP, so it is a
-mitigation, not a fix.
+| | v15.1.0 | v16.0.0 | v16.2.0 |
+|--|---------|---------|---------|
+| Package `type` | (none) → CommonJS | `module` (dual build) | `module` (dual build) |
+| Primary entry | `lib/index.js` (CJS) | `lib/esm/index.js` (ESM) | `lib/esm/index.js` (ESM) |
+| Vendored js-xdr | normal dep | CJS, named import ✗ | **ESM, named import ✓** |
+| Yarn Berry PnP | works | **fails** | **works** |
 
 ---
 
 ## Issue 2 — Published TypeScript types lag the runtime API
 
-> **⏳ Plan: wait-and-residual.** The root cause splits in two. The XDR-primitive
-> gaps (`Int256.fromString`/`.slice`, `Memo.arm()`, `bigint` → `Int64`/`Uint64`)
-> exist because `@stellar/js-xdr@4.0.0` ships **no TypeScript types** at all — the
-> SDK's `Int256 extends LargeInt` inherits an untyped base. The upcoming TS/ESM
-> rewrite of `js-xdr` is expected to ship real `.d.ts` for `LargeInt`/`Int64`/union
-> accessors, which should resolve these for free. **Don't hand-write those types
-> now** — they'd be superseded. Once the new `js-xdr` lands, re-run the Deno
-> type-check and fix only the **residual RPC-layer types** below, which are the
-> SDK's own code and unaffected by `js-xdr`.
+**Severity: Medium** — runtime works, but TypeScript consumers get false errors. Surfaced because Deno type-checks by default; see the `--no-check` note in [README.md](README.md). `--no-check` is **still required**.
 
-**Severity: Medium** — runtime works, but TypeScript consumers get false errors.
-Surfaced because Deno type-checks by default (Node/Bun and the old Vitest setup
-did not); see the `--no-check` note in [README.md](README.md).
+### Measured at 16.2.0: 27 errors, down from 30
 
-### Evidence (type errors on code that runs correctly)
+Measured by installing `16.0.0` and `16.2.0` against the same suite and diffing error signatures:
 
-- `Int256.fromString(...)` / `new Int256(...).slice(n)` — methods exist at
-  runtime, missing from the type.
-- `Memo.arm()` — `Property 'arm' does not exist on type 'Memo'`.
-- `GetTransactionResponse` success branch — `envelopeXdr` / `resultXdr` /
-  `resultMetaXdr` not present on the union type.
-- `rpc.parseRawEvents({ transactionEventsXdr, contractEventsXdr })` and
-  `rpc.parseRawSimulation({ cost, minResourceFee, ... })` — input/result shapes
-  reject valid fields.
-- `new xdr.TransactionResult({ feeCharged: 100n, ... })` — `bigint` not
-  assignable to `Int64`.
+- **3 fixed:** `rpc.Server.getContractInstance` is now typed (was 3 errors in `sdk-dynamic-imports.test.ts`).
+- **0 new.** No type regressions introduced by `16.1.0` or `16.2.0`.
 
-### Root cause
+Reproduce with `npx tsc --noEmit` (or `deno check tests/`).
 
-The `.d.ts` definitions are out of sync with the implemented runtime surface
-(missing methods, over-narrow discriminated unions, and numeric field types that
-don't accept `bigint`).
+### The v17 wait still applies
+
+The original plan was to wait for the TypeScript/ESM rewrite of `@stellar/js-xdr` rather than hand-write the XDR-primitive types. **That release has not landed:** `@stellar/js-xdr` is still **`4.0.0`, still CommonJS, and still ships no `.d.ts` at all**. The SDK's `Int256 extends LargeInt` therefore still inherits an untyped base. Issue 1's fix converted only the SDK's *vendored* copy to ESM, which does not help typing.
+
+**Do not hand-write these now** — they would be superseded. Re-measure once the new `js-xdr` ships with v17.
+
+### Breakdown of the 27
+
+#### Blocked on the js-xdr TS/ESM release — 12 errors
+
+| Gap | Count |
+|-----|-------|
+| `bigint` not assignable to `Int64` (constructing XDR numeric fields) | 2 |
+| `Int256.prototype.slice` missing | 3 |
+| `Int256.fromString` missing (static) | 3 |
+| `Memo.arm()` missing (js-xdr union accessor) | 4 |
+
+#### Residual SDK-owned RPC-layer work — 9 errors
+
+| Gap | Count |
+|-----|-------|
+| `GetTransactionResponse` union hides `envelopeXdr` / `resultXdr` / `resultMetaXdr` on the success branch | 6 |
+| `parseRawEvents` rejects `transactionEventsXdr` | 1 |
+| `parseRawSimulation` rejects `cost`; result hides `minResourceFee` | 2 |
+
+#### Further SDK gaps, not in the original report — 3 errors
+
+- `Memo.text()` is typed `(text: string)` but accepts a byte array at runtime.
+- `xdr.ContractEvent`'s `contractId` is typed `Hash | null` but rejects the `Buffer` that `StrKey.decodeContract()` returns, and is required even though the runtime accepts its omission.
+
+#### Harness-owned, not SDK — 3 errors
+
+Left as-is deliberately (see issue 4): an unused `SorobanDataBuilder` import in `sdk-method-surface.test.ts`, and two places where the suite's own typing is loose — the `it.each` shim types its cases as `unknown[]`, and a `["u32","string","i32"][i]` lookup widens to `string` where a narrower union is wanted (an `as const` would fix it).
 
 ### Proposed fix (SDK side)
 
-Update the type definitions to match runtime, in two groups:
-
-**Blocked on / expected from the TS/ESM `js-xdr` release — do not hand-write now:**
-
-- `fromString` / `slice` (and sibling `XdrLargeInt` methods) on the large-int types.
-- `arm()` on `Memo` (a `js-xdr` union accessor).
-- Allow `bigint` where XDR `Int64`/`Uint64` fields are constructed.
-
-**Residual SDK-owned work — fix after re-measuring against the new `js-xdr`:**
-
-- Widen the `GetTransactionResponse` union so the `SUCCESS`/`FAILED` branches
-  expose `envelopeXdr` / `resultXdr` / `resultMetaXdr`.
-- Correct `parseRawEvents` / `parseRawSimulation` input and result types.
-
-A type-level regression guard (like `tests/sdk-api-surface.test.ts`, but
-type-checked) would catch future drift.
+Unchanged for the two main groups: widen the `GetTransactionResponse` union and correct the `parseRawEvents` / `parseRawSimulation` shapes (SDK-owned, do now); add `fromString`/`slice`/`arm()` and `bigint`-accepting numeric fields once `js-xdr` ships types (do at v17). A type-level regression guard — like `sdk-api-surface.test.ts` but type-checked — would catch future drift.
 
 ---
 
-## Issue 3 — Hand-rolled ledger XDR fixtures don't decode under 16.0.0
+## Issue 3 — Hand-rolled ledger XDR fixtures don't decode
 
-**Severity: Low** — test-data limitation, not an SDK defect.
+**Severity: Low** — test-data limitation, not an SDK defect. Unchanged at 16.2.0.
 
 ### Evidence
 
-The static `headerXdr` / `metadataXdr` fixtures in the original
-`getLatestLedger` test fail to decode:
+The static `headerXdr` / `metadataXdr` fixtures in the original `getLatestLedger` test fail to decode:
 
 ```
 XDR Read Error: invalid XDR contract typecast - source buffer not entirely consumed
@@ -167,16 +126,45 @@ XDR Read Error: invalid XDR contract typecast - source buffer not entirely consu
 
 ### Root cause
 
-`getLatestLedger` XDR-decodes `LedgerHeader` and `LedgerCloseMeta` and requires
-the buffer to be fully consumed. The hand-authored base64 fixtures are not valid
-serializations of those types for SDK 16.0.0, so decoding throws.
+`getLatestLedger` XDR-decodes `LedgerHeader` and `LedgerCloseMeta` and requires the buffer to be fully consumed. The hand-authored base64 fixtures are not valid serializations of those types, so decoding throws.
 
-### Proposed fix (harness side)
+### Resolution
 
-- **Preferred:** cover `getLatestLedger` with a **live** call
-  (`tests/sdk-live-network.test.ts`), where the RPC returns genuinely valid XDR.
-  This is the current approach.
-- **If a deterministic fixture is required:** generate it programmatically from
-  the SDK's own `xdr.LedgerHeader` / `xdr.LedgerCloseMeta` constructors and
-  serialize, so the fixture is always valid for the pinned SDK version rather
-  than hand-typed.
+Covered by a **live** call in `tests/sdk-live-network.test.ts`, where the RPC returns genuinely valid XDR. This passes at 16.2.0. If a deterministic fixture is ever required, generate it programmatically from the SDK's own `xdr.LedgerHeader` / `xdr.LedgerCloseMeta` constructors rather than hand-typing it, so it stays valid for the pinned version.
+
+---
+
+## Issue 4 — Surface locks intentionally red pending v17
+
+**Severity: None** — harness expectations, not an SDK defect. **Deliberately left failing**; do not "fix" by regenerating the locks in isolation.
+
+`16.2.0` added five public symbols. The golden surface locks are still pinned to the `16.0.0` surface, so the surface-lock tests fail identically on all three runtimes — see `knownFailures` in [`reports/baseline.json`](reports/baseline.json) for exactly which. This is held until the v17 major (with its js-xdr overhaul) so the locks are re-baselined once rather than twice.
+
+### The additions are purely additive
+
+Verified by set-difference rather than by reading the truncated assertion diff — **zero removals**, so no breaking change:
+
+| Lock | Before → after | Added |
+|------|----------------|-------|
+| root exports | 77 → 80 | `TransactionFailedError`, `checkAuthEntryReadiness`, `inspectAuthEntry` |
+| `contract` exports | 10 → 11 | `KeypairSigner` |
+| `Keypair` instance | 13 → 16 | `signMessage`, `verifyMessage`, `_hashMessage` |
+
+Failing tests: `matches expected root exports`, `matches expected contract exports`, `matches expected nested rpc and contract namespace exports`, and `keeps Keypair static and instance methods stable`.
+
+`_hashMessage` is declared `private` in the SDK's `.d.ts`; it appears on the prototype only because TypeScript's `private` is compile-time only. It is not a new public API, but a prototype-based lock does see it.
+
+### Behavior of the new APIs *is* covered
+
+Rather than leave the additions untested while their locks are deferred, two new suites cover them (41 tests, green on Node, Deno, and Bun):
+
+- **`tests/sdk-sep53.test.ts`** — `Keypair.signMessage` / `verifyMessage` against the three official [SEP-53](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0053.md) test vectors (ASCII, UTF-8, binary), asserted in both base64 and hex. The `SHA256("Stellar Signed Message:\n" + message)` construction is independently re-derived with `node:crypto` and checked through `verify` rather than `verifyMessage`, so sign and verify cannot drift from the spec together. Plus negatives: tampered message, foreign key, truncated/empty signature, caller-prefixed message, and public-key-only signing.
+- **`tests/sdk-new-api-behavior.test.ts`** — `contract.KeypairSigner`, `TransactionFailedError` (via the loopback server, covering the documented empty-`operations` normalization, `result_xdr` decode, the `null` case, and the fallback to plain `BadResponseError`), and `inspectAuthEntry` / `checkAuthEntryReadiness` (source-account vs. address credentials, signed vs. unsigned, the exclusive expiration boundary, and uint32 range validation).
+
+**The SDK matches all three SEP-53 vectors byte-for-byte.** Note that the published SEP-53 document's base64 for vector 2 disagrees with its own hex for the same vector by one bit; the hex is correct and matches the SDK, so these tests assert the hex-derived value.
+
+### Non-issue, checked and dismissed
+
+`TransactionFailedError.name` is `"Error"` rather than the class name — but every SDK error class behaves that way (`NetworkError`, `BadRequestError`, `BadResponseError`, `NotFoundError`, `AccountRequiresMemoError`), so this is a long-standing SDK-wide convention, not a 16.2.0 regression.
+
+`KeypairSigner` assigns `signTransaction` / `signAuthEntry` as instance properties, leaving its prototype empty. A `protoMethods`-style lock would not see them, so the new suite asserts that shape directly.
