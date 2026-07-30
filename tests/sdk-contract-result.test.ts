@@ -1,6 +1,8 @@
 // contract.Ok / contract.Err -- the Rust-style Result pair used by generated contract clients -- plus the contract module's exported constants.
 //
 // The interesting behaviour is the failure direction: unwrapping the wrong arm must throw rather than return undefined, because a generated client relies on that to surface a contract error instead of silently continuing with a missing value.
+//
+// UPSTREAM OVERLAP: none. js-stellar-sdk has no test for rust_result -- no Ok, Err, unwrap, or unwrapErr coverage anywhere in test/. This file is the only behaviour coverage these types have, so it is worth extending rather than trimming.
 import { Err, DEFAULT_TIMEOUT, NULL_ACCOUNT, Ok } from "@stellar/stellar-sdk/contract";
 import { StrKey } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "./helpers/assert.ts";

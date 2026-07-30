@@ -1,11 +1,41 @@
 # Stellar JS SDK Multi-Runtime / Multi-Package-Manager Test Harness
 
-A test-only project that validates `@stellar/stellar-sdk` along two independent axes:
+## Purpose
+
+**This repo exists to fully test the end-user experience of `@stellar/stellar-sdk`.**
+
+The subject under test is the **published npm package**, consumed the way a real application consumes it: installed from the registry, reached only through its public API, on the runtimes and package managers users actually have. Everything here follows from that.
+
+It is **not** a replacement for the SDK's own test suite. [`js-stellar-sdk`](https://github.com/stellar/js-stellar-sdk) has roughly 125 unit and e2e test files covering `src/` for implementation correctness. That is a different subject, and duplicating it adds little:
+
+| | `js-stellar-sdk/test/` | this repo |
+|--|------------------------|-----------|
+| Subject | `src/` TypeScript source | the published npm artifact |
+| Reach | internal APIs, can construct any input | public API only, as a consumer |
+| Runtimes | one | Node, Deno, Bun |
+| Install layouts | one | npm, pnpm, Yarn classic, Yarn Berry (PnP) |
+
+Where this harness earns its keep is precisely where a consumer is exposed and upstream is not looking: malformed or hostile input through public decoders, packaging and module-format behavior, cross-runtime differences, and API surface upstream has no test for. Every SDK defect found here so far came from one of those categories — see [ISSUES.md](ISSUES.md).
+
+## The two axes
 
 1. **Runtime axis** — does the SDK *run* correctly? The same test suite executes natively on **Node**, **Deno**, and **Bun**.
 2. **Package-manager axis** — does the SDK *install and resolve* correctly under **npm**, **pnpm**, **Yarn classic**, and **Yarn Berry (PnP)**?
 
 These are orthogonal: the runtime axis catches execution differences (Buffer, crypto, `fetch`, XDR), the package-manager axis catches dependency-resolution differences (hoisted `node_modules`, symlinked store, Plug'n'Play).
+
+## Adding tests
+
+Before writing a test, check whether [`js-stellar-sdk/test/`](https://github.com/stellar/js-stellar-sdk/tree/main/test) already covers it. If it does, and the behavior is a pure function with no packaging or runtime dimension, the marginal value here is low — `StrKey.encodeContract` cannot behave differently on Bun than on Node.
+
+Prioritize, highest value first:
+
+1. **Public API with no upstream test at all.** `contract.Err`/`Ok`, `Config`, and `Utils` were in this category, and one of them yielded a finding.
+2. **Malformed or hostile input** through public decoders and parsers. Upstream is structurally weak here because its tests construct valid inputs through internal APIs first.
+3. **Packaging and module format** — no upstream equivalent, and the highest-severity finding so far lived here.
+4. **Cross-runtime divergence** in anything touching `Buffer`, crypto, `fetch`, or XDR.
+
+The coverage backlog count reported by the audit is a **progress signal, not a target**; a nonzero backlog is not a defect. See [ISSUES.md](ISSUES.md) issue 7 for the full reasoning.
 
 ## Layout
 
@@ -49,6 +79,7 @@ These are orthogonal: the runtime axis catches execution differences (Buffer, cr
 │
 ├── scripts/
 │   └── test-pms.sh              # installs + runs each package-manager sandbox
+├── CLAUDE.md                    # repo purpose + rules for adding tests
 ├── deno.json                    # Deno test task / node_modules resolution
 ├── tsconfig.json
 └── package.json

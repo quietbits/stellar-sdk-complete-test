@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Local-only working notes: upstream bug write-ups, scratch analysis. Kept for
+# reference, never committed. e.g. UPSTREAM-FINDINGS-DRAFT.md
+*-DRAFT.md

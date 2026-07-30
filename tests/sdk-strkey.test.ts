@@ -4,6 +4,8 @@
 //
 // Four of the fifteen SEP-23 invalid vectors are currently ACCEPTED by the SDK. They are listed in INVALID_BUT_ACCEPTED below and deliberately not asserted here, because a test asserting the current behaviour would codify the defect. See ISSUES.md issue 5.
 //
+// UPSTREAM OVERLAP: js-stellar-sdk has test/unit/base/strkey.test.ts covering the valid SEP-23 vectors, round-trips, muxed accounts, signed-payload size bounds, and getVersionByteForPrefix. What is distinct here: it tests only 8 of the 15 invalid vectors, parks #15 as a known limitation, and has no encoder length cases at all. The three signed-payload cases below (ISSUES.md issue 5) are missed upstream for a structural reason -- its tests build an xdr.SignerKeyEd25519SignedPayload and then encode it, so the XDR writer always emits a correct length prefix and padding. That path cannot produce a mismatch; only decoding a hostile string can, which is the end-user direction this repo exists to probe.
+//
 // SOURCE: https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0023.md
 import { Keypair, StrKey } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "./helpers/assert.ts";

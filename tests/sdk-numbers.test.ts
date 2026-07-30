@@ -3,6 +3,8 @@
 // The bounds are asserted as exact decimal strings rather than computed from the SDK's own MAX_VALUE, so an off-by-one or a sign error in the type definitions cannot pass by agreeing with itself. Every value below is the mathematical two's-complement bound for its width.
 //
 // The conversion checks matter more than the arithmetic: these types exist to move values across the JS-number boundary, where silently losing precision is worse than throwing.
+//
+// UPSTREAM OVERLAP: substantial. js-stellar-sdk has test/unit/base/numbers/{int128,uint128,int256,uint256,xdr_large_int}.test.ts covering isType, getType, toBigInt, toNumber, toJSON, toString, and valueOf. This file adds little beyond exercising the published artifact on three runtimes; keep that in mind before extending it. See ISSUES.md issue 7 for why coverage effort is now aimed at end-user-distinct surface instead.
 import { Hyper, Int128, Int256, Uint128, Uint256, UnsignedHyper, XdrLargeInt } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "./helpers/assert.ts";
 

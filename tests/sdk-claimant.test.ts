@@ -1,6 +1,8 @@
 // Claimant and its claim-predicate constructors.
 //
 // Every predicate is asserted through its XDR discriminant and decoded arms rather than by comparing objects, so the test pins the wire encoding a validator will actually see. Predicates that nest (and/or/not) are checked by reading their children back out.
+//
+// UPSTREAM OVERLAP: substantial. js-stellar-sdk has test/unit/base/claimant.test.ts covering the constructor, the unconditional default, and every predicate constructor. This file adds little beyond exercising the published artifact on three runtimes; keep that in mind before extending it. See ISSUES.md issue 7.
 import { Claimant, Keypair, xdr } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "./helpers/assert.ts";
 

@@ -1,6 +1,8 @@
 // Config (process-global HTTP defaults), Utils, scvSortedMap, and the standalone constants.
 //
 // Config is mutable global state shared by every Horizon/RPC client in the process, so each test here restores it with setDefault(). Without that, a stray setAllowHttp(true) would leak into unrelated suites and could make a test pass only because of ordering.
+//
+// UPSTREAM OVERLAP: mostly none, and that is where issue 6 came from. js-stellar-sdk never tests Utils.validateTimebounds or Utils.sleep, and touches Config only as incidental setup in other suites (setAllowHttp / setDefault are called but never asserted). scvSortedMap is the one exception, covered by test/unit/base/scval.test.ts. Worth extending rather than trimming.
 import { Config, MemoReturn, TimeoutInfinite, Utils, nativeToScVal, scValToNative, scvSortedMap, xdr } from "@stellar/stellar-sdk";
 import { Account, Asset, Keypair, Networks, Operation, TransactionBuilder } from "@stellar/stellar-sdk";
 import { afterEach, describe, expect, it } from "./helpers/assert.ts";

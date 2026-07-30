@@ -6,6 +6,8 @@ disable-model-invocation: true
 
 Validate the latest published `@stellar/stellar-sdk` against both axes of this harness and record the outcome in `reports/`.
 
+**This repo tests the end-user experience of the published package** — the npm artifact as a real application consumes it, through its public API, across Node/Deno/Bun and npm/pnpm/Yarn classic/Yarn Berry (PnP). It is not a replacement for `js-stellar-sdk`'s own ~125-file unit suite, which tests `src/`. Keep that distinction in view at every step, and especially in step 7 when deciding what is worth testing.
+
 ## Rules
 
 1. **Never modify an existing file under `tests/`.** The expectations *are* the measurement. If a lock looks outdated, report it — do not update it. Adding a **new** test file is allowed, but only in step 9, after the result has been recorded, and only with the user's approval.
@@ -132,6 +134,8 @@ Read the code, not the changelog, to decide what is new — the script does this
 
 - **Changed behavior on existing symbols** — new optional parameters, changed defaults, fixed error paths. No new symbol appears, so only the changelog will point at these. Check whether existing tests actually pin the new behavior.
 - **Removals.** The script reports these separately as breaking changes. They are never a coverage gap; report them as a finding.
+
+**Before proposing tests for any gap, check whether `js-stellar-sdk` already covers it.** Its `test/` has ~125 unit test files. Duplicating them adds little: upstream tests `src/` for implementation correctness, this repo tests the published artifact for end-user exposure. Aim at what upstream cannot or does not reach — hostile and malformed input through public decoders, packaging and module-format behavior, cross-runtime divergence, and symbols with no upstream test at all. Every SDK finding so far came from that category, none from areas upstream covers well. See ISSUES.md issue 7 for the revised scope; a nonzero backlog is not itself a defect.
 
 Symbols in `reports/coverage-exclusions.json` are deliberately not covered and never block. Adding an entry there requires a real reason, and "we have not got to it yet" is not one — that belongs in the backlog. The script also warns when an exclusion names a symbol that no longer exists, which is dead config to prune.
 
