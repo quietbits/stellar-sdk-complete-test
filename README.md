@@ -38,6 +38,7 @@ These are orthogonal: the runtime axis catches execution differences (Buffer, cr
 │   ├── TEMPLATE.md              #   the required report format
 │   ├── baseline.json            #   expected results + known-failing tests
 │   ├── surface-inventory.json   #   known public API surface (generated)
+│   ├── coverage-exclusions.json #   symbols deliberately not covered, with reasons
 │   └── <version>.md             #   e.g. 16.2.0.md
 │
 ├── .claude/skills/

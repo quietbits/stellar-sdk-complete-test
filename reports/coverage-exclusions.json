@@ -1,0 +1,18 @@
+{
+  "_comment": "Symbols deliberately not behaviour-tested by this harness. coverage-audit.mjs subtracts these from both the blocking and backlog counts, so the gap can legitimately reach zero. Every entry needs a real reason. Never add one to silence a gap you simply have not got to yet -- untested-but-tractable belongs in the backlog, not here.",
+  "exclusions": [
+    {
+      "symbols": [
+        "BindingGenerator",
+        "BindingGenerator#eventDiagnostics",
+        "BindingGenerator#generate",
+        "BindingGenerator#validateOptions",
+        "BindingGenerator.fromContractId",
+        "BindingGenerator.fromSpec",
+        "BindingGenerator.fromWasmHash"
+      ],
+      "reason": "Emits TypeScript source from a contract spec. Testing it means asserting on generated code text, which is a codegen test rather than validation that the SDK works for a consumer -- the question this harness exists to answer. Brittle against any formatting change in the emitter.",
+      "revisitIf": "The generated bindings become something this harness consumes and executes, rather than only text the CLI writes out."
+    }
+  ]
+}

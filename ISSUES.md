@@ -10,6 +10,9 @@ The pinned SDK version, the toolchain it was verified against, and the current e
 | 2 | Published types lag the runtime API | Medium | TypeScript DX | ⏳ **Open**, improved: 30 → 27 errors, 3 fixed, 0 new |
 | 3 | Hand-rolled ledger XDR fixtures don't decode | Low | test data only | ✔️ Mitigated (covered live); no SDK fix needed |
 | 4 | Surface locks intentionally red pending v17 | None (harness) | test expectations | 📌 **Deferred to v17** — additive-only |
+| 5 | StrKey accepts 4 of 15 SEP-23 invalid vectors | **Medium** | input validation | 🔴 **Open** — spec requires rejection |
+| 6 | `TimeoutInfinite` transactions fail `Utils.validateTimebounds` | Low | API consistency | 🔴 **Open** — two SDK APIs disagree |
+| 7 | Public surface not fully behavior-tested | None (harness) | test coverage | 🟡 **In progress** — tier 1 done, tiers 2–4 open |
 
 ---
 
@@ -168,3 +171,71 @@ Rather than leave the additions untested while their locks are deferred, two new
 `TransactionFailedError.name` is `"Error"` rather than the class name — but every SDK error class behaves that way (`NetworkError`, `BadRequestError`, `BadResponseError`, `NotFoundError`, `AccountRequiresMemoError`), so this is a long-standing SDK-wide convention, not a 16.2.0 regression.
 
 `KeypairSigner` assigns `signTransaction` / `signAuthEntry` as instance properties, leaving its prototype empty. A `protoMethods`-style lock would not see them, so the new suite asserts that shape directly.
+
+---
+
+## Issue 5 — StrKey accepts 4 of the 15 SEP-23 invalid test vectors
+
+**Severity: Medium** — malformed strkeys are accepted as valid. [SEP-23](https://github.com/stellar/stellar-protocol/blob/master/ecosystem/sep-0023.md) states implementations "must accept the following valid test cases and **reject** the invalid test cases", and warns that accepting them "could in turn cause security problems". Found at 16.2.0 while writing `tests/sdk-strkey.test.ts`; not assessed against earlier versions.
+
+All 9 valid SEP-23 vectors pass, and 11 of 15 invalid vectors are correctly rejected. These 4 are accepted:
+
+| SEP-23 case | Strkey prefix | `isValid…` | `decode…` |
+|-------------|---------------|------------|-----------|
+| Length prefix shorter than payload | `P` (signed payload) | returns `true` | returns 72 bytes |
+| Length prefix longer than payload | `P` (signed payload) | returns `true` | returns 64 bytes |
+| No zero padding in signed payload | `P` (signed payload) | returns `true` | returns 65 bytes |
+| Claimable balance type byte is not 0 | `B` | returns `true` | returns 33 bytes, first byte `0x1` |
+
+The three signed-payload cases mean `isValidSignedPayload` does not cross-check the 4-byte length prefix against the actual payload length, nor require the zero padding to a 4-byte boundary. The claimable-balance case means the leading type byte is not validated against the only defined value (`v0` = 0).
+
+### Reproduce
+
+The vectors are in `tests/sdk-strkey.test.ts` as `INVALID_BUT_ACCEPTED`. They are deliberately **not** asserted there: a test pinning the current behavior would codify the defect. The test file asserts only that the count of known deviations is 4, so fixing one upstream shows up as a failure in that guard.
+
+### Proposed fix (SDK side)
+
+In `decodeSignedPayload`/`isValidSignedPayload`, after decoding: read the 4-byte big-endian length prefix, require `36 + length <= total` and that the payload occupies exactly `ceil(length / 4) * 4` bytes, and require the padding bytes to be zero. In the claimable-balance path, require the leading type byte to be `0`.
+
+---
+
+## Issue 6 — `TimeoutInfinite` transactions are reported outside their timebounds
+
+**Severity: Low** — two SDK APIs disagree about the same transaction. `TransactionBuilder.setTimeout(TimeoutInfinite)` is the documented way to build a transaction with no expiry, and it produces `timeBounds = { minTime: "0", maxTime: "0" }`. `Utils.validateTimebounds` then compares literally:
+
+```js
+return now >= Number.parseInt(minTime, 10) - gracePeriod && now <= Number.parseInt(maxTime, 10) + gracePeriod;
+```
+
+With `maxTime = 0` that reads as "expired in 1970", so `validateTimebounds` returns `false` for a transaction the builder was asked to make non-expiring.
+
+### Proposed fix (SDK side)
+
+Treat `maxTime === 0` as unbounded in `validateTimebounds`, matching the meaning `TimeoutInfinite` already has in `setTimeout`. Pinned as observed behavior in `tests/sdk-config-helpers.test.ts` so a fix surfaces as a failure there.
+
+---
+
+## Issue 7 — Public surface is not fully behavior-tested
+
+**Severity: None** — harness coverage, not an SDK defect. Tracked because "new APIs are covered" is enforced per release (see the coverage audit in `/test-latest-sdk`) while the pre-existing surface is not yet.
+
+Measured by `coverage-audit.mjs`, which counts a symbol as covered only if a non-surface-lock test references it — appearing in a surface lock proves existence, not behavior.
+
+| | Symbols |
+|--|---------|
+| Public surface | 472 |
+| Behavior-tested | ~301 |
+| Deliberately excluded | 7 (`BindingGenerator`, see `reports/coverage-exclusions.json`) |
+| Remaining backlog | **164** |
+
+Tier 1 — pure functions with no I/O — is **done**: 75 symbols closed by `sdk-strkey`, `sdk-numbers`, `sdk-claimant`, `sdk-contract-result`, and `sdk-config-helpers` (101 tests, green on all three runtimes, no new type errors).
+
+Remaining, in the order they are tractable:
+
+- **Tier 2 (~83)** — deterministic model and builder objects: `TransactionBuilder`, `Transaction`, `FeeBumpTransaction`, `Asset`, `Address`, `MuxedAccount`, `Keypair`, `SorobanDataBuilder`.
+- **Tier 3 (24)** — `rpc.Server` methods and `assembleTransaction`, via the existing loopback server.
+- **Tier 4 (~43)** — `contract.Spec` (18), `AssembledTransaction` (12), `SentTransaction`, `Client.deploy`, `Watcher`; these need spec fixtures and simulation responses.
+
+### The reported number is optimistic
+
+The audit matches symbol names by word boundary, so a name that appears for an unrelated reason counts as coverage. Three such false positives are known and recorded in `reports/baseline.json` under `coverage.falsePositives`: `Address.claimableBalance` and `Address.liquidityPool` (the strings `"claimableBalance"`/`"liquidityPool"` appear in `sdk-strkey.test.ts` as version-byte *names*), and `contract.AssembledTransaction#toJSON` (collides with `XdrLargeInt#toJSON`). The script reports 161; the true figure is 164. Verify any gap by reading the test before trusting either number.

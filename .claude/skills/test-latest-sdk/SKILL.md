@@ -133,9 +133,11 @@ Read the code, not the changelog, to decide what is new — the script does this
 - **Changed behavior on existing symbols** — new optional parameters, changed defaults, fixed error paths. No new symbol appears, so only the changelog will point at these. Check whether existing tests actually pin the new behavior.
 - **Removals.** The script reports these separately as breaking changes. They are never a coverage gap; report them as a finding.
 
+Symbols in `reports/coverage-exclusions.json` are deliberately not covered and never block. Adding an entry there requires a real reason, and "we have not got to it yet" is not one — that belongs in the backlog. The script also warns when an exclusion names a symbol that no longer exists, which is dead config to prune.
+
 Two limits to state honestly in the report rather than paper over:
 
-- The reference check is word-boundary name matching. Short names (`sleep`, `none`, `init`) can collide, and a symbol exercised indirectly is invisible to it. **Verify every reported gap by reading the test file** before calling it uncovered.
+- The reference check is word-boundary name matching. Short names (`sleep`, `none`, `init`) can collide, and a symbol exercised indirectly is invisible to it. It over-reports coverage as a result: a test mentioning the string `"liquidityPool"` for an unrelated reason marks `Address.liquidityPool` covered. **Verify every reported gap — and any surprising newly-covered symbol — by reading the test file.** Record known false positives in `baseline.json` under `coverage.falsePositives`.
 - The pre-existing backlog is large and is **not** blocking. Only new-in-this-version gaps block the verdict.
 
 ## Step 8 — Write the report

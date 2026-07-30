@@ -29,17 +29,30 @@
   },
 
   "runtimeAxis": {
-    "_comment": "Live runs add 7 tests and remove the 1 placeholder that STELLAR_LIVE=0 substitutes, hence the 6-test delta.",
+    "_comment": "Live runs add 7 tests and remove the 1 placeholder that STELLAR_LIVE=0 substitutes, hence the 6-test delta. Node runs 1 test more than Bun because sdk-umd-bundle is Node-only.",
     "deterministic": {
-      "node": { "tests": 161, "pass": 157, "fail": 4 },
-      "deno": { "passed": 14, "steps": 174, "failed": 2, "failedSteps": 4 },
-      "bun": { "pass": 156, "fail": 4 }
+      "node": { "tests": 262, "pass": 258, "fail": 4 },
+      "deno": { "passed": 22, "steps": 293, "failed": 2, "failedSteps": 4 },
+      "bun": { "pass": 257, "fail": 4 }
     },
     "live": {
-      "node": { "tests": 167, "pass": 163, "fail": 4 },
-      "deno": { "passed": 14, "steps": 180, "failed": 2, "failedSteps": 4 },
-      "bun": { "pass": 162, "fail": 4 }
+      "node": { "tests": 268, "pass": 264, "fail": 4 },
+      "deno": { "passed": 22, "steps": 299, "failed": 2, "failedSteps": 4 },
+      "bun": { "pass": 263, "fail": 4 }
     }
+  },
+
+  "coverage": {
+    "_comment": "From coverage-audit.mjs. publicSymbols/backlog are the script's reported numbers; backlogTrue corrects for name-collision false positives found by reading the tests. Tiers 2-4 of the backlog are still open -- see ISSUES.md issue 7.",
+    "publicSymbols": 472,
+    "backlogReported": 161,
+    "backlogTrue": 164,
+    "excluded": 7,
+    "falsePositives": [
+      "Address.claimableBalance",
+      "Address.liquidityPool",
+      "contract.AssembledTransaction#toJSON"
+    ]
   },
 
   "packageManagerAxis": {

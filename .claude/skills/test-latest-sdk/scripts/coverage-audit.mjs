@@ -21,6 +21,7 @@ import { resolve } from "node:path";
 
 const REPO = process.cwd();
 const INVENTORY = resolve(REPO, "reports/surface-inventory.json");
+const EXCLUSIONS = resolve(REPO, "reports/coverage-exclusions.json");
 const TESTS_DIR = resolve(REPO, "tests");
 const SDK = resolve(REPO, "node_modules/@stellar/stellar-sdk");
 
@@ -123,6 +124,19 @@ if (existsSync(INVENTORY)) {
   previous = JSON.parse(readFileSync(INVENTORY, "utf8"));
 }
 
+// Deliberate non-coverage, each with a recorded reason. Subtracted from both the
+// blocking and backlog counts so the gap can legitimately reach zero.
+const excluded = new Map(); // qualified path -> reason
+if (existsSync(EXCLUSIONS)) {
+  const parsed = JSON.parse(readFileSync(EXCLUSIONS, "utf8"));
+  for (const entry of parsed.exclusions ?? []) {
+    if (!entry.reason) die(`every exclusion needs a reason: ${JSON.stringify(entry.symbols)}`);
+    for (const symbol of entry.symbols ?? []) excluded.set(symbol, entry.reason);
+  }
+}
+
+const stale = [...excluded.keys()].filter((q) => !surface.has(q));
+
 const classify = (qualified) => {
   const bare = surface.get(qualified);
   if (mentions(bare, behavior)) return "covered";
@@ -148,13 +162,17 @@ if (removed.length > 0) {
   for (const q of removed) console.log(`     ${q}`);
 }
 
-// --- New symbols: the blocking bucket. ---
-const newUncovered = added.filter((q) => classify(q) !== "covered");
+// --- New symbols: the blocking bucket. Exclusions do not block. ---
+const newUncovered = added.filter((q) => !excluded.has(q) && classify(q) !== "covered");
 const newCovered = added.filter((q) => classify(q) === "covered");
 
 console.log(`\nNew since inventory: ${added.length}`);
 if (added.length > 0) {
   for (const q of added) {
+    if (excluded.has(q)) {
+      console.log(`  skip ${q}  (excluded: ${excluded.get(q)})`);
+      continue;
+    }
     const state = classify(q);
     const mark = state === "covered" ? "ok  " : "GAP ";
     console.log(`  ${mark} ${q}${state === "existence-only" ? "  (surface lock only)" : ""}`);
@@ -162,7 +180,9 @@ if (added.length > 0) {
 }
 
 // --- Pre-existing backlog: informational only. ---
-const backlog = [...surface.keys()].filter((q) => known.has(q) && classify(q) !== "covered");
+const backlog = [...surface.keys()].filter(
+  (q) => known.has(q) && !excluded.has(q) && classify(q) !== "covered",
+);
 const unreferenced = backlog.filter((q) => classify(q) === "unreferenced").length;
 console.log(
   `\nPre-existing backlog (not blocking): ${backlog.length} symbols without behavior tests ` +
@@ -170,6 +190,14 @@ console.log(
 );
 if (process.argv.includes("--list-backlog")) {
   for (const q of backlog.sort()) console.log(`     ${q}`);
+}
+
+// --- Exclusions: deliberate non-coverage, each with a recorded reason. ---
+console.log(`\nDeliberately excluded: ${excluded.size} (see reports/coverage-exclusions.json)`);
+if (stale.length > 0) {
+  // An exclusion for a symbol that no longer exists is dead config that quietly widens over time.
+  console.log(`  !! ${stale.length} exclusion(s) name symbols not in the current surface — prune them:`);
+  for (const q of stale) console.log(`       ${q}`);
 }
 
 console.log("\nHeuristic: word-boundary name matching, surface-lock files excluded.");
