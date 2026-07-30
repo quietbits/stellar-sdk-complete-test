@@ -7,7 +7,7 @@
 // without friendbot funding.
 //
 // Set STELLAR_LIVE=0 to skip (e.g. in an offline environment).
-import { Horizon, Keypair, Networks, rpc } from "@stellar/stellar-sdk";
+import { Asset, contract, Horizon, Keypair, Networks, rpc } from "@stellar/stellar-sdk";
 import { describe, expect, it } from "./helpers/assert.ts";
 
 const HORIZON_URL = "https://horizon-testnet.stellar.org";
@@ -61,5 +61,20 @@ describe("stellar-sdk live testnet behavior", () => {
     const latest = await server.getLatestLedger();
     expect(typeof latest.sequence).toBe("number");
     expect(latest.sequence > 0).toBe(true);
+  });
+
+  // Exercises contract.Client.from()'s SAC path (lazy `import()` of the
+  // embedded SAC spec) against a real contract: the native XLM asset's SAC,
+  // which exists on every network by default, so no deployment is needed.
+  it("builds a contract Client from the native SAC via the embedded spec", async () => {
+    const sacId = Asset.native().contractId(Networks.TESTNET);
+    const client = await contract.Client.from({
+      contractId: sacId,
+      rpcUrl: RPC_URL,
+      networkPassphrase: Networks.TESTNET,
+    });
+    const funcs = client.spec.funcs().map((f) => String(f.name()));
+    expect(funcs.includes("transfer")).toBe(true);
+    expect(funcs.includes("balance")).toBe(true);
   });
 });
