@@ -10,7 +10,7 @@ It is **not** a replacement for [`js-stellar-sdk`](https://github.com/stellar/js
 
 ## Before adding a test
 
-1. Check whether `js-stellar-sdk/test/` already covers it. If it does, and the behavior is a pure function with no packaging or runtime dimension, the marginal value here is low.
+1. Check whether `js-stellar-sdk/test/` already covers it — run `node .claude/skills/test-latest-sdk/scripts/coverage-audit.mjs --vs-upstream`, which splits the backlog into *covered upstream* (deprioritize) and *no upstream test* (write first). If upstream covers it and the behavior is a pure function with no packaging or runtime dimension, the marginal value here is low.
 2. Prefer, in order: public API with **no** upstream test; **malformed or hostile input** through public decoders; **packaging / module format**; **cross-runtime divergence** (Buffer, crypto, `fetch`, XDR).
 3. Prefer external ground truth — official SEP vectors, upstream fixtures — over asserting the SDK agrees with itself. A test that signs with `signMessage` and verifies with `verifyMessage` passes even if both drift from the spec.
 4. Cover failure paths, not just happy paths: invalid input, missing capability, boundary values.

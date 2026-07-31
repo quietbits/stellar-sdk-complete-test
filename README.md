@@ -28,6 +28,15 @@ These are orthogonal: the runtime axis catches execution differences (Buffer, cr
 
 Before writing a test, check whether [`js-stellar-sdk/test/`](https://github.com/stellar/js-stellar-sdk/tree/main/test) already covers it. If it does, and the behavior is a pure function with no packaging or runtime dimension, the marginal value here is low — `StrKey.encodeContract` cannot behave differently on Bun than on Node.
 
+The audit does this cross-reference for you:
+
+```bash
+node .claude/skills/test-latest-sdk/scripts/coverage-audit.mjs --vs-upstream
+# defaults to ../js-stellar-sdk; override with --upstream=<path> or STELLAR_SDK_REPO
+```
+
+It splits the backlog into *already covered upstream* and *no upstream test*, and skips cleanly if you have no upstream checkout. At 16.2.0 that split is 132 / 28 — most of the remaining backlog is already tested upstream.
+
 Prioritize, highest value first:
 
 1. **Public API with no upstream test at all.** `contract.Err`/`Ok`, `Config`, and `Utils` were in this category, and one of them yielded a finding.

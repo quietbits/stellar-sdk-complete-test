@@ -6,24 +6,29 @@ The pinned SDK version, the toolchain it was verified against, and the current e
 
 | # | Issue | Severity | Surface | Blocks? | Status |
 |---|-------|----------|---------|---------|--------|
-| 1 | SDK fails to load under Yarn Berry (PnP) | **High** | install/resolution | no | ✅ **Fixed** |
+| 1 | SDK fails to load under Yarn Berry (PnP) — **ESM entry** | **High** | install/resolution | no | ✅ **Fixed** — but see issue 12 for the CJS entry |
 | 2 | Published types lag the runtime API | Medium | TypeScript DX | no | ⏳ **Open**, improved: 30 → 27 errors, 3 fixed, 0 new |
 | 3 | Hand-rolled ledger XDR fixtures don't decode | Low | test data only | no | ✔️ Mitigated (covered live); no SDK fix needed |
 | 4 | Surface locks intentionally red pending v17 | None (harness) | test expectations | no | 📌 **Deferred to v17** — additive-only |
 | 5 | StrKey accepts 4 of 15 SEP-23 invalid vectors | **Medium** | input validation | no | 🔴 **Open** — 3 new, 1 known upstream |
 | 6 | `TimeoutInfinite` transactions fail `Utils.validateTimebounds` | Low | API consistency | no | 🔴 **Open** — two SDK APIs disagree |
-| 7 | Coverage retargeted to end-user-distinct surface | None (harness) | test coverage | no | 🟡 **In progress** — see revised scope |
+| 7 | Coverage retargeted to end-user-distinct surface | None (harness) | test coverage | no | ✅ **Work list closed** — all 28 no-upstream-test symbols covered |
 | 8 | StrKey encoders emit strkeys the SDK itself rejects | Low | input validation | no | 🔴 **Open** — no length validation on encode |
 | 9 | Harness housekeeping | None (harness) | tooling | no | 🟡 **Open** — deliberately deferred |
 | 10 | Reproducibility options considered and declined | None (harness) | tooling | no | 📋 **Decided** — revisit only on the stated triggers |
+| 11 | `contract.Spec` decodes struct fields by position, not by key | **Medium** | data decoding | no | 🔴 **Open** — two SDK decoders disagree on the same bytes |
+| 12 | CJS build `require()`s ESM-only dependencies | **High** | install/resolution | **yes** | 🔴 **Open** — `require()` fails under Yarn Berry PnP and without `require(esm)` |
+| 13 | Coverage audit was blind to 5 of 8 exported subpaths | None (harness) | test coverage | no | ✅ **Closed** — guard added, blind spot cannot reopen silently |
 
-**Blocks?** means: would this stop `/test-latest-sdk` calling a run clean. Only two things do — a test failure with no `knownFailures` entry in [`reports/baseline.json`](reports/baseline.json), and a symbol new in the version under test with no behavior test. Everything currently open is real work that does not gate a release. Nothing outstanding blocks today.
+**Blocks?** means: would this stop `/test-latest-sdk` calling a run clean. Only two things do — a test failure with no `knownFailures` entry in [`reports/baseline.json`](reports/baseline.json), and a symbol new in the version under test with no behavior test. **Issue 12 blocks today:** the `yarn-berry` package-manager sandbox fails, and it is a genuine SDK defect rather than a harness artifact, so it is recorded as a failing axis rather than silenced with a `knownFailures` entry. Everything else open is real work that does not gate a release.
 
 ---
 
 ## Issue 1 — SDK fails to load under Yarn Berry Plug'n'Play
 
-> **✅ Fixed as of `16.2.0`.** The `yarn-berry` (PnP) sandbox now **PASSES**, alongside npm, pnpm, and Yarn classic, with no regression on the Node/Deno/Bun runtime axes. Originally reported against `16.0.0` and tracked in [PR #1484](https://github.com/stellar/js-stellar-sdk/pull/1484).
+> **✅ Fixed as of `16.2.0`** — for the **ESM** entry point, which is what this issue was about. Originally reported against `16.0.0` and tracked in [PR #1484](https://github.com/stellar/js-stellar-sdk/pull/1484).
+>
+> **Read with issue 12.** When this was written the `yarn-berry` sandbox passed, and the sandbox only imported the SDK as ESM. Extending it to `require()` the package showed that the **CJS** entry still fails under PnP, for an unrelated cause (ESM-only dependencies). So "PnP works at 16.2.0" is true of `import` and false of `require`. The fix recorded below is real and unaffected; the sandbox is red again for the other half of the dual build.
 
 ### The fix is not the one this document originally proposed
 
@@ -265,6 +270,47 @@ Explicitly **deprioritized**: pure functions already covered upstream. Tiers 2�
 
 The backlog count stays useful as a rough progress signal, but **it is no longer the target**. Do not treat a nonzero backlog as a defect.
 
+### The actual work list: 28 symbols with no upstream test — closed
+
+**Status: done.** All 28 now have behavior tests, in four new files (135 tests, green on Node, Deno, and Bun, `tsc --noEmit` unchanged at 27). The cross-reference now reports `NO upstream test: 0`, and the overall backlog fell from 160 to 121 — the 28 targeted symbols plus 11 more picked up along the way. The one finding that came out of it is issue 11 below, again from a decoder handed bytes it did not produce itself.
+
+| File | Tests | Covers |
+|------|-------|--------|
+| `tests/sdk-signature-base.test.ts` | 29 | `TransactionBase`, and `signatureBase` on `TransactionBase` / `Transaction` / `FeeBumpTransaction` |
+| `tests/sdk-contract-spec.test.ts` | 46 | the 11 `contract.Spec` symbols |
+| `tests/sdk-contract-assembly.test.ts` | 36 | `AssembledTransaction.buildWithOp` / `validateInvokeContractOp` / `parseError` / `handleWalletError`, `SentTransaction`, `Watcher`, `Client.fromWasmHash` |
+| `tests/sdk-rpc-errors.test.ts` | 24 | `NetworkError#getResponse`, `BadRequestError`, `Friendbot`, `rpc.BasicSleepStrategy`, `rpc.LinearSleepStrategy`, `rpc.Server#prepareTransaction` |
+
+Two things worth recording about the list itself, both of which mean 28 overstated the amount of *public* surface involved:
+
+- **11 of the 28 are declared `private` in the published `.d.ts`** — the eight `contract.Spec` converters (`nativeToUdt`, `nativeToUnion`, `nativeToStruct`, `nativeToEnum`, `scValUdtToNative`, `unionToNative`, `structToNative`, `enumToNative`) plus `AssembledTransaction`'s `parseError`, `handleWalletError`, and `validateInvokeContractOp`. They appear in the inventory because it enumerates prototype own-property names, and TypeScript's `private` is compile-time only — the same reason `_hashMessage` shows up in issue 4. They are covered here through the public entry points that route into them (`nativeToScVal` / `scValToNative`, `result`, `sign`, `fromXDR` / `fromJSON`), which is the only way an end user reaches them at all.
+- **`Friendbot` is a types-only namespace.** It exists at runtime solely as `{}`, because `export * as Friendbot` emits a binding even when the namespace declares nothing but interfaces. Pinned in `sdk-rpc-errors.test.ts` so a release that gives it runtime members shows up.
+
+One new false positive was found and removed rather than recorded: `MuxedAccount` was briefly credited because the string appeared in a prose comment. The audit's name matching cuts both ways, and a comment is not a test.
+
+### The original list, for reference
+
+Of the 160 remaining backlog symbols, **132 already have upstream coverage** and 28 do not. Regenerate this at any time — the cross-reference is reproducible, not a one-off:
+
+```bash
+node .claude/skills/test-latest-sdk/scripts/coverage-audit.mjs --vs-upstream
+# defaults to ../js-stellar-sdk; override with --upstream=<path> or STELLAR_SDK_REPO
+# skips cleanly (exit 0) when no upstream checkout is present
+```
+
+Measured against 16.2.0, grouped by the fixture work each group needs:
+
+| Group | Symbols | Needs |
+|-------|---------|-------|
+| `contract.Spec` — `nativeToUdt`, `structToNative`, `unionToNative`, `enumToNative`, `nativeToStruct`, `nativeToUnion`, `nativeToEnum`, `scValStrToNative`, `scValUdtToNative`, `getFunc`, `errorCases` | 11 | a real contract spec fixture; the embedded SAC spec is reachable offline |
+| `contract.AssembledTransaction` — `parseError`, `handleWalletError`, `buildWithOp`, `validateInvokeContractOp`; plus `SentTransaction`, `Watcher`, `Client.fromWasmHash` | 7 | loopback simulation responses |
+| `signatureBase` on `Transaction`, `FeeBumpTransaction`, `TransactionBase`; plus `TransactionBase` itself | 4 | nothing — one test can cover all three |
+| `NetworkError#getResponse`, `BadRequestError`, `Friendbot`, `rpc.BasicSleepStrategy`, `rpc.LinearSleepStrategy`, `rpc.Server#prepareTransaction` | 6 | loopback for `Friendbot` and `prepareTransaction`; the rest are direct |
+
+Rough size, extrapolating from the tier-1 pass (75 symbols → 101 tests, ~1.35 tests/symbol) and allowing for harder setup and more failure paths: **~55–70 tests in about 3 files**. Chasing all 160 instead would be 200+ tests, 132 symbols of which upstream already covers.
+
+The name-matching caveat cuts both ways here: a symbol may be credited to upstream because its name appears incidentally. Confirm by opening the upstream test before skipping something.
+
 ### The reported number is optimistic
 
 The audit matches symbol names by word boundary, so a name that appears for an unrelated reason counts as coverage. Three such false positives are known and recorded in `reports/baseline.json` under `coverage.falsePositives`: `Address.claimableBalance` and `Address.liquidityPool` (the strings `"claimableBalance"`/`"liquidityPool"` appear in `sdk-strkey.test.ts` as version-byte *names*), and `contract.AssembledTransaction#toJSON` (collides with `XdrLargeInt#toJSON`). The script reports 161; the true figure is 164. Verify any gap by reading the test before trusting either number.
@@ -343,3 +389,149 @@ Two inputs are outside this repo's control and no amount of pinning fixes them. 
 
 - **The npm registry.** The PM axis resolves fresh on purpose — `package-managers/.gitignore` excludes all four sandbox lockfiles — because the axis exists to test real installation. The SDK's own dependencies use `^` ranges, so the same SDK version can resolve a different tree later. Mitigated by recording the resolved versions in each report, not by pinning.
 - **Testnet.** The live suite hits real infrastructure. Mitigated by running `STELLAR_LIVE=0` first so a testnet failure can never be misfiled as an SDK regression.
+
+---
+
+## Issue 11 — `contract.Spec` decodes struct fields by position, not by key
+
+**Severity: Medium** — a contract's return value can be decoded into an object whose field *names* are attached to the wrong *values*, with no error raised. Found at 16.2.0 while writing `tests/sdk-contract-spec.test.ts`; not assessed against earlier versions.
+
+`Spec.scValToNative` is what `contract.Client` uses to turn a contract's return value into a JS object. For a struct UDT it delegates to `structToNative`, which walks the incoming `scvMap` by index and takes the field name from the spec entry at the *same* index. The map's keys are never read:
+
+```js
+// contract/spec.js — structToNative
+val.map()?.forEach((entry, i) => {
+  const field = fields[i];                       // <- position, not entry.key()
+  res[field.name().toString()] = this.scValToNative(entry.val(), field.type());
+});
+```
+
+### Two SDK decoders disagree about the same bytes
+
+This is the clearest statement of the problem, and it needs no assumption about any particular contract. Given a `Point { x, y }` spec and an `scvMap` whose entries are `y=20, x=10`:
+
+| Decoder | Result |
+|---------|--------|
+| `scValToNative(scv)` (generic, key-based) | `{ y: 20, x: 10 }` — correct |
+| `spec.scValToNative(scv, udt("Point"))` | `{ x: 20, y: 10 }` — **values exchanged** |
+
+### Why this is reachable, not just hostile input
+
+Soroban requires `ScMap` keys to be **sorted**, while a contract spec lists struct fields in **declaration order**. Those two orders coincide only when the Rust struct happens to be declared alphabetically. A struct declared `struct Rec { zed: u32, alpha: u32 }` serializes on the wire as `alpha, zed` and is therefore decoded as `{ zed: <alpha's value>, alpha: <zed's value> }`.
+
+That the spec generator preserves declaration order rather than sorting is visible in the SDK's own embedded SAC spec: `approve` reports its inputs as `from, spender, amount, expiration_ledger`, which is neither alphabetical nor sorted. That is evidence from a function signature rather than a struct, so **the end-to-end case against a real Rust contract still wants confirmation against `soroban-sdk`'s `contracttype` derive** — it is asserted here only as far as it was verified in-session. The decoder defect itself is confirmed and does not depend on it.
+
+### Related, same root cause
+
+Two more consequences of not consulting the keys, both pinned in the same test file:
+
+- **Undeclared keys are accepted and renamed.** A map of `{ bogus: 42, alsoBogus: 43 }` decodes to `{ x: 42, y: 43 }` — a contract's return value is mapped onto the caller's expected field names regardless of what it actually said.
+- **Short maps truncate silently.** A one-entry map for a two-field struct yields `{ x: 1 }`, with no indication that `y` was missing.
+
+Separately, `enumToNative` checks only that the value is an `scvU32` and never compares it to the declared cases, so encode and decode disagree about legality: `nativeToScVal(99, Color)` throws `no such enum entry: 99`, while `scValToNative(scvU32(99), Color)` returns `99`. Two different enums in the same spec also decode identically.
+
+### Why upstream misses it
+
+`structToNative`, `nativeToStruct`, and `enumToNative` have no test in `js-stellar-sdk`. The shape of the bug also survives the obvious test: `nativeToScVal` emits map entries in declaration order too, so encoding and decoding through the *same* spec cancels the error out and round-trips cleanly. Only feeding the decoder a validly sorted map — bytes it did not produce — exposes it. This is the same class as issue 5, and the reason the harness rule about external ground truth exists.
+
+### Proposed fix (SDK side)
+
+In `structToNative`, look each field up by its key symbol rather than by index, and fail on a key the struct does not declare or a declared field the map omits. In `nativeToStruct`, emit the map in sorted key order so the SDK stops producing `ScMap`s that violate the sorted-key invariant. In `enumToNative`, take the `udt` that `scValUdtToNative` already has in hand and reject a discriminant that is not a declared case.
+
+### Where it is pinned
+
+`tests/sdk-contract-spec.test.ts`, in the two `describe` blocks headed "struct decoding ignores map keys" and "enum decoding is unvalidated". Each assertion is marked `DEVIATION` in a comment and pinned as observed behaviour, not endorsed — so a fix upstream surfaces as a failure there rather than passing silently.
+
+---
+
+## Issue 12 — The CommonJS build `require()`s ESM-only dependencies
+
+**Severity: High** — `require("@stellar/stellar-sdk")` fails outright wherever Node's `require(esm)` support is not in play. It loads today only because that support has been on by default since Node 22.12. Found at 16.2.0 by extending the package-manager smoke test to cover the CJS half of the dual build, which nothing had done before. **This is the only open finding that blocks a clean release run.**
+
+This is issue 1's mirror image. That one was the **ESM** entry failing under Yarn Berry PnP and is fixed. This is the **CJS** entry failing under the same package manager, and it survived because every CJS test in this repo loaded the UMD `dist/` bundle off disk rather than going through the `require` condition in the exports map.
+
+### Evidence
+
+Three dependencies are `"type": "module"` with **no `require` condition anywhere** in their exports, and the CJS build `require()`s all three across 17 files under `lib/cjs/`:
+
+| Dependency | Version | `type` | `require` condition |
+|------------|---------|--------|---------------------|
+| `@noble/hashes` | 2.2.0 | `module` | none |
+| `@noble/ed25519` | — | `module` | none |
+| `uint8array-extras` | — | `module` | none |
+
+The first one reached is `lib/cjs/errors/transaction_failed.js:10`, `require('@noble/hashes/sha2.js')`, pulled in by the root `index.js`. So the failure is on the package root, not some peripheral subpath.
+
+**Under Yarn Berry PnP** (any Node version) — the sandbox in `package-managers/yarn-berry`:
+
+```
+Error [ERR_REQUIRE_ESM]: require() of ES Module .../@noble/hashes/sha2.js
+from .../@stellar/stellar-sdk/lib/cjs/errors/transaction_failed.js not supported.
+    at require$$0.Module._extensions..js (.../.pnp.cjs:6171:15)
+```
+
+PnP patches `Module._extensions['.js']` and resolves through its own loader, which bypasses Node's `require(esm)` path entirely.
+
+**Not PnP-specific.** The same failure reproduces on a plain hoisted npm layout the moment the escape hatch is removed:
+
+```bash
+cd package-managers/npm
+node -e 'require("@stellar/stellar-sdk")'                              # OK (require(esm) on by default)
+node --no-experimental-require-module -e 'require("@stellar/stellar-sdk")'
+# Error [ERR_REQUIRE_ESM] ... @noble/hashes/sha2.js
+```
+
+So the CJS build is not self-sufficient: it depends on a Node feature that a CommonJS consumer cannot assume. Node lines older than 22.12, where `require(esm)` is flagged or absent, are expected to fail the same way — **stated as expectation, not verified here**, since only Node 22.22 was available in this run.
+
+### Why it went unnoticed
+
+Nothing exercised the `require` condition. `tests/sdk-umd-bundle.test.ts` does call `require()`, but on a copy of `dist/stellar-sdk.js` — a separate single-file UMD artifact that inlines its dependencies and therefore never hits this path. The package-manager smoke test imported ESM only. Both gaps are now closed: `tests/sdk-package-entrypoints.test.ts` loads every subpath through `require()`, and the four sandbox smoke tests do the same under each manager's layout.
+
+### Proposed fix (SDK side)
+
+The CJS build needs a dependency graph that CommonJS can actually load. In rough order of preference:
+
+1. **Bundle the ESM-only dependencies into `lib/cjs`**, the way the vendored `js-xdr` copy already is. Self-contained, no consumer-visible change.
+2. **Convert the `require()` calls to dynamic `import()`** in the affected modules, which is what the Node error message itself suggests — but it makes the affected entry points async, which is a breaking change to their shape.
+3. **Drop to dependency versions that still ship CJS.** `@noble/hashes` 1.x had a `require` condition; 2.x removed it. Least attractive, since it pins the SDK to older crypto.
+
+Whichever route, a CI job that runs `node --no-experimental-require-module -e 'require("@stellar/stellar-sdk")'` would keep it from regressing.
+
+### Where it is pinned
+
+- `tests/sdk-package-entrypoints.test.ts` — "cannot be require()d without Node's require(esm) support", marked `DEVIATION`, asserting the current broken behaviour so a fix turns it red. Node-only (needs a child process and a Node flag).
+- `package-managers/yarn-berry` — fails for real. Recorded as `FAIL` in `reports/baseline.json` under `packageManagerAxis`, deliberately **not** as a `knownFailures` entry: this is a live SDK defect, not a deferred harness expectation.
+
+---
+
+## Issue 13 — Coverage audit was blind to five of eight exported subpaths
+
+**Severity: None** — harness measurement, not an SDK defect. Recorded because the number it produced was quietly incomplete, and because the fix is what stops that recurring.
+
+`coverage-audit.mjs` inventoried three entry points — the root, `./contract`, and `./rpc`. The package declares **eight** subpaths. Nothing measured `./base`, `./axios`, `./axios/contract`, `./axios/rpc`, or `./http-client/axios`, and no test imported any of them, so nothing verified they resolved at all under any runtime or package manager.
+
+Most of the unmeasured surface turned out to be redundant, which is why the symbol count barely moved:
+
+| Subpath | Relationship | Novel symbols |
+|---------|--------------|---------------|
+| `./axios`, `./axios/contract`, `./axios/rpc` | identical surface to their non-axios twins | 0 |
+| `./base` | strict subset of the root | 0 |
+| `./http-client/axios` | genuinely distinct | `httpClient`, `create`, `CancelToken` |
+
+But "the count was nearly right" is not the same as "the measurement was sound" — the *resolution* of those five subpaths was untested, and that is the axis issue 1 and issue 12 both live on.
+
+### What changed
+
+- `./http-client/axios` is now a fourth `ENTRY_POINTS` entry. Its three SDK-owned symbols are behavior-tested; the ~34 statics that come with it are axios's own API surfacing through a verbatim re-export, excluded with a reason in `reports/coverage-exclusions.json`.
+- The four mirrors are recorded as `MIRRORED_SUBPATHS` — classified, not counted twice.
+- **A drift guard**: the audit now reads the SDK's own `exports` map and exits non-zero if a declared subpath is neither an entry point nor a recorded mirror. A new subpath in v17 fails the audit instead of going unmeasured. `tests/sdk-package-entrypoints.test.ts` locks the same set from the test side.
+- `reports/surface-inventory.json` regenerated once, deliberately, for the widened entry-point set: 472 → 510 symbols.
+
+### Two mis-credits found while re-checking, both now corrected
+
+Re-running the upstream cross-reference with comments and import lines stripped showed three of the "covered upstream" verdicts resting on incidental text:
+
+- **`rpc.Server#getLedgerEntry`** — credited by two `//` comments in `test/unit/server/soroban/request_airdrop.test.ts`. No upstream test calls it. It was a genuine hole; now covered in `tests/sdk-rpc-errors.test.ts`.
+- **`contract.SentTransaction.init`** and **`rpc.Server#getContractWasmByHash`** — no upstream test either, but both are exercised here through `signAndSend` and `Client.fromWasmHash`. Covered in substance, never named.
+
+The audit's name matching cuts both ways, and this is the second time it has mattered. Treat every "covered upstream" verdict as triage, not proof.

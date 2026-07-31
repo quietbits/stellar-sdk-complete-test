@@ -16,8 +16,8 @@
 //
 // Exit codes: 0 = no blocking gaps, 1 = new symbols lack behavior tests,
 // 2 = the audit could not run (bad cwd, missing SDK).
-import { readFileSync, writeFileSync, readdirSync, existsSync } from "node:fs";
-import { resolve } from "node:path";
+import { readFileSync, writeFileSync, readdirSync, existsSync, statSync } from "node:fs";
+import { resolve, join } from "node:path";
 
 const REPO = process.cwd();
 const INVENTORY = resolve(REPO, "reports/surface-inventory.json");
@@ -28,10 +28,42 @@ const SDK = resolve(REPO, "node_modules/@stellar/stellar-sdk");
 // Files that assert a symbol exists rather than exercising it.
 const LOCK_FILES = new Set(["sdk-api-surface.test.ts", "sdk-method-surface.test.ts"]);
 
+// Entry points whose symbols are inventoried. Keep this aligned with the
+// package's `exports` map -- see EXPECTED_SUBPATHS below, which fails the audit
+// if the SDK adds a subpath nobody has classified. A subpath belongs here only
+// if it contributes symbols the other entry points do not already expose;
+// mirrors are listed as MIRRORED_SUBPATHS instead so the count is not doubled.
 const ENTRY_POINTS = [
   ["", "lib/esm/index.js"],
   ["contract.", "lib/esm/contract/index.js"],
   ["rpc.", "lib/esm/rpc/index.js"],
+  ["httpClient.", "lib/esm/http-client/axios.js"],
+];
+
+// Declared subpaths that expose no symbol the ENTRY_POINTS above do not already
+// cover, with the reason each is redundant. Resolution of all of them is tested
+// separately in tests/sdk-package-entrypoints.test.ts -- being redundant for
+// symbol counting is not the same as being untested.
+const MIRRORED_SUBPATHS = {
+  "./base": "subset of the root export (protocol layer without network clients)",
+  "./axios": "same surface as the root, wired to the axios HTTP client",
+  "./axios/contract": "same surface as ./contract",
+  "./axios/rpc": "same surface as ./rpc",
+};
+
+// Every subpath the package is expected to declare. The audit fails if the SDK
+// adds or removes one, because an unclassified subpath is surface nobody is
+// measuring -- which is exactly how ./http-client/axios went unnoticed until it
+// was found by hand. Classify a new entry as an ENTRY_POINT or a MIRROR.
+const EXPECTED_SUBPATHS = [
+  ".",
+  "./base",
+  "./contract",
+  "./rpc",
+  "./axios",
+  "./axios/contract",
+  "./axios/rpc",
+  "./http-client/axios",
 ];
 
 function die(message) {
@@ -44,7 +76,39 @@ if (!existsSync(resolve(REPO, "package.json")) || !existsSync(TESTS_DIR)) {
 }
 if (!existsSync(SDK)) die("@stellar/stellar-sdk is not installed -- run pnpm install first");
 
-const sdkVersion = JSON.parse(readFileSync(resolve(SDK, "package.json"), "utf8")).version;
+const sdkPackageJson = JSON.parse(readFileSync(resolve(SDK, "package.json"), "utf8"));
+const sdkVersion = sdkPackageJson.version;
+
+/**
+ * Guards against surface that nobody is measuring. The symbol inventory only
+ * walks ENTRY_POINTS; if the package declares a subpath that is neither an entry
+ * point nor a recorded mirror, its symbols are invisible to every number this
+ * script prints. Blocking is the right response -- a silent undercount reads as
+ * "fully covered" when it is not.
+ */
+function auditExportsMap() {
+  const declared = Object.keys(sdkPackageJson.exports ?? {}).sort();
+  const expected = [...EXPECTED_SUBPATHS].sort();
+
+  const added = declared.filter((s) => !expected.includes(s));
+  const removed = expected.filter((s) => !declared.includes(s));
+
+  if (added.length === 0 && removed.length === 0) {
+    return { ok: true, declared };
+  }
+
+  console.log(`\n!! EXPORTS MAP DRIFT — ${declared.length} subpaths declared, ${expected.length} classified`);
+  for (const s of added) {
+    console.log(`     NEW  ${s}  <-- unclassified: its symbols are NOT being counted`);
+  }
+  for (const s of removed) {
+    console.log(`     GONE ${s}  <-- breaking change for anyone importing it`);
+  }
+  console.log("   Classify each new subpath in coverage-audit.mjs as an ENTRY_POINT");
+  console.log("   (it exposes symbols nothing else does) or a MIRRORED_SUBPATH (it does not),");
+  console.log("   and add it to tests/sdk-package-entrypoints.test.ts.");
+  return { ok: false, declared };
+}
 
 /** Enumerate the live public surface as sorted qualified paths. */
 async function liveSurface() {
@@ -145,6 +209,12 @@ const classify = (qualified) => {
 
 console.log(`SDK ${sdkVersion} — ${surface.size} public symbols`);
 
+const exportsMap = auditExportsMap();
+console.log(
+  `Entry points inventoried: ${ENTRY_POINTS.length} of ${exportsMap.declared.length} declared subpaths ` +
+    `(${Object.keys(MIRRORED_SUBPATHS).length} mirrored, resolution tested in tests/sdk-package-entrypoints.test.ts)`,
+);
+
 if (previous === null) {
   console.log("\nNo reports/surface-inventory.json yet, so nothing can be called new.");
   console.log("Run with --update-inventory to snapshot the current surface first.");
@@ -192,6 +262,48 @@ if (process.argv.includes("--list-backlog")) {
   for (const q of backlog.sort()) console.log(`     ${q}`);
 }
 
+// --- Upstream cross-reference: which backlog symbols js-stellar-sdk already tests. ---
+// Duplicating upstream unit tests adds little: it tests src/ for implementation
+// correctness, this repo tests the published artifact for end-user exposure. The
+// symbols with NO upstream test are the ones worth writing here. See README
+// "Adding tests" and ISSUES.md issue 7.
+if (process.argv.includes("--vs-upstream")) {
+  const flag = process.argv.find((a) => a.startsWith("--upstream="));
+  const candidate =
+    (flag === undefined ? undefined : flag.slice("--upstream=".length)) ??
+    process.env.STELLAR_SDK_REPO ??
+    resolve(REPO, "../js-stellar-sdk");
+  const upstreamTests = resolve(candidate, "test");
+
+  if (!existsSync(upstreamTests)) {
+    // Never fail the audit for this: the checkout is optional and machine-specific.
+    console.log(`\nUpstream cross-reference: SKIPPED — no test/ directory at ${upstreamTests}`);
+    console.log("  Pass --upstream=<path to js-stellar-sdk> or set STELLAR_SDK_REPO.");
+  } else {
+    let corpus = "";
+    const walk = (dir) => {
+      for (const entry of readdirSync(dir)) {
+        // Skip vendored deps and agent worktrees, which would double-count.
+        if (entry === "node_modules" || entry === "worktrees") continue;
+        const path = join(dir, entry);
+        if (statSync(path).isDirectory()) walk(path);
+        else if (/\.(ts|js|mjs|cjs)$/.test(entry)) corpus += `\n${readFileSync(path, "utf8")}`;
+      }
+    };
+    walk(upstreamTests);
+
+    const bare = (q) => q.split(/[#.]/).pop();
+    const noUpstream = backlog.filter((q) => !mentions(bare(q), corpus)).sort();
+
+    console.log(`\nUpstream cross-reference against ${upstreamTests}`);
+    console.log(`  backlog                  : ${backlog.length}`);
+    console.log(`  has some upstream test   : ${backlog.length - noUpstream.length}  (deprioritized)`);
+    console.log(`  NO upstream test         : ${noUpstream.length}  <-- write these first`);
+    for (const q of noUpstream) console.log(`       ${q}`);
+    console.log("  Same name-matching caveat applies in both directions; confirm by opening the test.");
+  }
+}
+
 // --- Exclusions: deliberate non-coverage, each with a recorded reason. ---
 console.log(`\nDeliberately excluded: ${excluded.size} (see reports/coverage-exclusions.json)`);
 if (stale.length > 0) {
@@ -203,6 +315,10 @@ if (stale.length > 0) {
 console.log("\nHeuristic: word-boundary name matching, surface-lock files excluded.");
 console.log("Short names can collide and indirect use is invisible — verify each gap by reading the test.");
 
+if (!exportsMap.ok) {
+  console.log("\nRESULT: the package declares a subpath this audit does not classify.");
+  process.exit(1);
+}
 if (newUncovered.length > 0) {
   console.log(`\nRESULT: ${newUncovered.length} new symbol(s) without a behavior test.`);
   process.exit(1);

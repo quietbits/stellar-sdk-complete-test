@@ -135,7 +135,13 @@ Read the code, not the changelog, to decide what is new — the script does this
 - **Changed behavior on existing symbols** — new optional parameters, changed defaults, fixed error paths. No new symbol appears, so only the changelog will point at these. Check whether existing tests actually pin the new behavior.
 - **Removals.** The script reports these separately as breaking changes. They are never a coverage gap; report them as a finding.
 
-**Before proposing tests for any gap, check whether `js-stellar-sdk` already covers it.** Its `test/` has ~125 unit test files. Duplicating them adds little: upstream tests `src/` for implementation correctness, this repo tests the published artifact for end-user exposure. Aim at what upstream cannot or does not reach — hostile and malformed input through public decoders, packaging and module-format behavior, cross-runtime divergence, and symbols with no upstream test at all. Every SDK finding so far came from that category, none from areas upstream covers well. See ISSUES.md issue 7 for the revised scope; a nonzero backlog is not itself a defect.
+**Before proposing tests for any gap, check whether `js-stellar-sdk` already covers it:**
+
+```bash
+node .claude/skills/test-latest-sdk/scripts/coverage-audit.mjs --vs-upstream
+```
+
+That splits the backlog into "already covered upstream" (deprioritize) and "no upstream test" (write these first). It defaults to `../js-stellar-sdk`, accepts `--upstream=<path>` or `STELLAR_SDK_REPO`, and skips cleanly when no checkout is present. Its `test/` has ~125 unit test files. Duplicating them adds little: upstream tests `src/` for implementation correctness, this repo tests the published artifact for end-user exposure. Aim at what upstream cannot or does not reach — hostile and malformed input through public decoders, packaging and module-format behavior, cross-runtime divergence, and symbols with no upstream test at all. Every SDK finding so far came from that category, none from areas upstream covers well. See ISSUES.md issue 7 for the revised scope; a nonzero backlog is not itself a defect.
 
 Symbols in `reports/coverage-exclusions.json` are deliberately not covered and never block. Adding an entry there requires a real reason, and "we have not got to it yet" is not one — that belongs in the backlog. The script also warns when an exclusion names a symbol that no longer exists, which is dead config to prune.
 

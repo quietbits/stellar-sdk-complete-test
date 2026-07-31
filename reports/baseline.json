@@ -31,35 +31,47 @@
   "runtimeAxis": {
     "_comment": "Live runs add 7 tests and remove the 1 placeholder that STELLAR_LIVE=0 substitutes, hence the 6-test delta. Node runs 1 test more than Bun because sdk-umd-bundle is Node-only.",
     "deterministic": {
-      "node": { "tests": 262, "pass": 258, "fail": 4 },
-      "deno": { "passed": 22, "steps": 293, "failed": 2, "failedSteps": 4 },
-      "bun": { "pass": 257, "fail": 4 }
+      "node": { "tests": 444, "pass": 440, "fail": 4 },
+      "deno": { "passed": 52, "steps": 486, "failed": 2, "failedSteps": 4 },
+      "bun": { "tests": 443, "pass": 439, "fail": 4 }
     },
     "live": {
-      "node": { "tests": 268, "pass": 264, "fail": 4 },
-      "deno": { "passed": 22, "steps": 299, "failed": 2, "failedSteps": 4 },
-      "bun": { "pass": 263, "fail": 4 }
+      "node": { "tests": 450, "pass": 446, "fail": 4 },
+      "deno": { "passed": 52, "steps": 492, "failed": 2, "failedSteps": 4 },
+      "bun": { "tests": 449, "pass": 445, "fail": 4 }
     }
   },
 
   "coverage": {
-    "_comment": "From coverage-audit.mjs. publicSymbols/backlog are the script's reported numbers; backlogTrue corrects for name-collision false positives found by reading the tests. Tiers 2-4 of the backlog are still open -- see ISSUES.md issue 7.",
-    "publicSymbols": 472,
-    "backlogReported": 161,
-    "backlogTrue": 164,
-    "excluded": 7,
+    "_comment": "From coverage-audit.mjs. publicSymbols/backlog are the script's reported numbers; backlogTrue corrects for name-collision false positives found by reading the tests. The no-upstream-test work list is closed (--vs-upstream reports 0); what remains is the 120 symbols upstream already covers -- see ISSUES.md issue 7. publicSymbols rose 472 -> 510 because the audit now inventories a fourth entry point, ./http-client/axios, which nothing measured before (ISSUES.md issue 13); 34 of those 38 are axios's own API arriving through a verbatim re-export and are excluded with a reason.",
+    "publicSymbols": 510,
+    "entryPointsInventoried": 4,
+    "declaredSubpaths": 8,
+    "mirroredSubpaths": 4,
+    "backlogReported": 120,
+    "backlogTrue": 122,
+    "noUpstreamTest": 0,
+    "excluded": 41,
     "falsePositives": [
       "Address.claimableBalance",
-      "Address.liquidityPool",
-      "contract.AssembledTransaction#toJSON"
-    ]
+      "Address.liquidityPool"
+    ],
+    "_falsePositivesComment": "contract.AssembledTransaction#toJSON was previously listed here; sdk-contract-assembly.test.ts now calls toJSON() for real, so the credit is genuine."
   },
 
   "packageManagerAxis": {
+    "_comment": "yarn-berry went red again when the smoke test was extended to require() the package. Deliberately NOT moved to knownFailures: this is a live SDK defect (ISSUES.md issue 12), not a deferred harness expectation, and a run should not be called clean while a published entry point is unloadable under a supported package manager. The ESM half still passes there -- issue 1 remains fixed.",
     "npm": "PASS",
     "pnpm": "PASS",
     "yarn-classic": "PASS",
-    "yarn-berry": "PASS"
+    "yarn-berry": "FAIL",
+    "yarnBerryFailure": {
+      "test": "the CommonJS half of the dual build resolves under this package manager",
+      "file": "package-managers/yarn-berry/smoke.test.mjs",
+      "error": "ERR_REQUIRE_ESM on @noble/hashes/sha2.js from lib/cjs/errors/transaction_failed.js",
+      "issue": 12,
+      "esmHalf": "PASS"
+    }
   },
 
   "typeCheck": {
