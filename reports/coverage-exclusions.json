@@ -1,0 +1,59 @@
+{
+  "_comment": "Symbols deliberately not behaviour-tested by this harness. coverage-audit.mjs subtracts these from both the blocking and backlog counts, so the gap can legitimately reach zero. Every entry needs a real reason. Never add one to silence a gap you simply have not got to yet -- untested-but-tractable belongs in the backlog, not here.",
+  "exclusions": [
+    {
+      "symbols": [
+        "BindingGenerator",
+        "BindingGenerator#eventDiagnostics",
+        "BindingGenerator#generate",
+        "BindingGenerator#validateOptions",
+        "BindingGenerator.fromContractId",
+        "BindingGenerator.fromSpec",
+        "BindingGenerator.fromWasmHash"
+      ],
+      "reason": "Emits TypeScript source from a contract spec. Testing it means asserting on generated code text, which is a codegen test rather than validation that the SDK works for a consumer -- the question this harness exists to answer. Brittle against any formatting change in the emitter.",
+      "revisitIf": "The generated bindings become something this harness consumes and executes, rather than only text the CLI writes out."
+    },
+    {
+      "symbols": [
+        "httpClient.httpClient.Axios",
+        "httpClient.httpClient.AxiosError",
+        "httpClient.httpClient.AxiosHeaders",
+        "httpClient.httpClient.Cancel",
+        "httpClient.httpClient.CancelToken",
+        "httpClient.httpClient.CanceledError",
+        "httpClient.httpClient.HttpStatusCode",
+        "httpClient.httpClient.VERSION",
+        "httpClient.httpClient.all",
+        "httpClient.httpClient.constructor",
+        "httpClient.httpClient.create",
+        "httpClient.httpClient.default",
+        "httpClient.httpClient.defaults",
+        "httpClient.httpClient.delete",
+        "httpClient.httpClient.formToJSON",
+        "httpClient.httpClient.get",
+        "httpClient.httpClient.getAdapter",
+        "httpClient.httpClient.getUri",
+        "httpClient.httpClient.head",
+        "httpClient.httpClient.interceptors",
+        "httpClient.httpClient.isAxiosError",
+        "httpClient.httpClient.isCancel",
+        "httpClient.httpClient.mergeConfig",
+        "httpClient.httpClient.options",
+        "httpClient.httpClient.patch",
+        "httpClient.httpClient.patchForm",
+        "httpClient.httpClient.post",
+        "httpClient.httpClient.postForm",
+        "httpClient.httpClient.put",
+        "httpClient.httpClient.putForm",
+        "httpClient.httpClient.query",
+        "httpClient.httpClient.request",
+        "httpClient.httpClient.spread",
+        "httpClient.httpClient.toFormData"
+      ],
+      "reason": "axios's own API, surfacing because /http-client/axios re-exports the axios instance verbatim. Not SDK surface.",
+      "detail": "lib/esm/http-client/axios-client.js is literally `const axiosClient = axios`, and the audit walks function statics, so every axios static appears as an SDK symbol. Asserting on `AxiosHeaders` or `HttpStatusCode` would be testing axios, which is out of scope for a harness about the Stellar SDK's end-user experience. The SDK-owned symbols at that subpath are NOT excluded: `CancelToken` (the SDK's own class, not axios's), `create`, and `httpClient` itself are covered in tests/sdk-package-entrypoints.test.ts, along with the subpath's resolution under every runtime and package manager.",
+      "revisitIf": "The SDK stops re-exporting axios verbatim and starts wrapping it, at which point the wrapper's surface is the SDK's own and should be tested."
+    }
+  ]
+}
