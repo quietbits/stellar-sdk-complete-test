@@ -19,8 +19,10 @@ The pinned SDK version, the toolchain it was verified against, and the current e
 | 11 | `contract.Spec` decodes struct fields by position, not by key | **Medium** | data decoding | no | 🔴 **Open** — two SDK decoders disagree on the same bytes |
 | 12 | CJS build `require()`s ESM-only dependencies | **High** | install/resolution | **yes** | 🔴 **Open** — `require()` fails under Yarn Berry PnP and without `require(esm)` |
 | 13 | Coverage audit was blind to 5 of 8 exported subpaths | None (harness) | test coverage | no | ✅ **Closed** — guard added, blind spot cannot reopen silently |
+| 14 | Generated TypeScript bindings do not compile as emitted | Medium | CLI/codegen | **yes** | 🔴 **Open** — generated client names `Buffer` without Node types |
+| 15 | Published `stellar-js` CLI fails under Yarn Berry PnP | Medium | CLI/install | **yes** | 🔴 **Open** — even `--help` crashes in the PnP loader |
 
-**Blocks?** means: would this stop `/test-latest-sdk` calling a run clean. Only two things do — a test failure with no `knownFailures` entry in [`reports/baseline.json`](reports/baseline.json), and a symbol new in the version under test with no behavior test. **Issue 12 blocks today:** the `yarn-berry` package-manager sandbox fails, and it is a genuine SDK defect rather than a harness artifact, so it is recorded as a failing axis rather than silenced with a `knownFailures` entry. Everything else open is real work that does not gate a release.
+**Blocks?** means: would this stop `/test-latest-sdk` calling a run clean. A failing end-user axis with no `knownFailures` entry and a symbol new in the version under test with no behavior test both block. **Issues 12, 14, and 15 block today:** Yarn Berry cannot load the CJS entry or run the CLI, and generated bindings do not compile as emitted. These are genuine SDK defects rather than harness artifacts, so they are recorded as failing axes rather than silenced with `knownFailures` entries. Everything else open is real work that does not gate a release.
 
 ---
 
@@ -82,7 +84,7 @@ Measured by installing `16.0.0` and `16.2.0` against the same suite and diffing 
 - **3 fixed:** `rpc.Server.getContractInstance` is now typed (was 3 errors in `sdk-dynamic-imports.test.ts`).
 - **0 new.** No type regressions introduced by `16.1.0` or `16.2.0`.
 
-Reproduce with `npx tsc --noEmit` (or `deno check tests/`).
+Reproduce with `npm run typecheck` (or `deno check tests/`).
 
 ### The v17 wait still applies
 
@@ -239,12 +241,14 @@ Treat `maxTime === 0` as unbounded in `validateTimebounds`, matching the meaning
 
 Measured by `coverage-audit.mjs`, which counts a symbol as covered only if a non-surface-lock test references it — appearing in a surface lock proves existence, not behavior.
 
-| | Symbols |
-|--|---------|
-| Public surface | 472 |
-| Behavior-tested | ~301 |
-| Deliberately excluded | 7 (`BindingGenerator`, see `reports/coverage-exclusions.json`) |
-| Remaining backlog | **164** |
+Two snapshots, because this issue records a trajectory rather than a single measurement. `reports/baseline.json` is the source of truth for the current figures.
+
+| | At tier-1 pass | Current |
+|--|---------------|---------|
+| Public surface | 472 | **510** (four entry points inventoried, not three — issue 13) |
+| Deliberately excluded | 7 (`BindingGenerator`) | 41 (plus axios's re-exported surface) |
+| Remaining backlog | 164 | **120**, all of which upstream already covers |
+| Backlog with no upstream test | 28 | **0** |
 
 Tier 1 — pure functions with no I/O — is **done**: 75 symbols closed by `sdk-strkey`, `sdk-numbers`, `sdk-claimant`, `sdk-contract-result`, and `sdk-config-helpers` (101 tests, green on all three runtimes, no new type errors).
 
@@ -313,7 +317,11 @@ The name-matching caveat cuts both ways here: a symbol may be credited to upstre
 
 ### The reported number is optimistic
 
-The audit matches symbol names by word boundary, so a name that appears for an unrelated reason counts as coverage. Three such false positives are known and recorded in `reports/baseline.json` under `coverage.falsePositives`: `Address.claimableBalance` and `Address.liquidityPool` (the strings `"claimableBalance"`/`"liquidityPool"` appear in `sdk-strkey.test.ts` as version-byte *names*), and `contract.AssembledTransaction#toJSON` (collides with `XdrLargeInt#toJSON`). The script reports 161; the true figure is 164. Verify any gap by reading the test before trusting either number.
+The audit matches symbol names by word boundary, so a name that appears for an unrelated reason counts as coverage. Two such false positives remain, recorded in `reports/baseline.json` under `coverage.falsePositives`: `Address.claimableBalance` and `Address.liquidityPool`, because the strings `"claimableBalance"` and `"liquidityPool"` appear in `sdk-strkey.test.ts` as version-byte *names*. So the script reports 120 and the true backlog is 122.
+
+Two others have since been resolved rather than recorded. `contract.AssembledTransaction#toJSON` was a genuine collision with `XdrLargeInt#toJSON`; `sdk-contract-assembly.test.ts` now calls `toJSON()` for real, so the credit is earned. `MuxedAccount` was briefly credited by a prose comment in `sdk-signature-base.test.ts` — the comment was reworded rather than the false positive recorded, since a comment is not a test.
+
+Verify any gap by reading the test before trusting either number. This has now mattered three times; treat the audit as triage, not proof.
 
 ---
 
@@ -353,6 +361,14 @@ Deliberately uncovered, for the same reason as issue 5: a test pinning the curre
 ## Issue 9 — Harness housekeeping
 
 **Severity: None** — harness-owned, no SDK involvement. Grouped because each item is small, real, and deliberately deferred rather than overlooked.
+
+### `npm run test:all` only ever ran Node — **fixed**
+
+The script was `npm run test:node && npm run test:deno && npm run test:bun`. Because the surface locks are deliberately red until v17 (issue 4), `test:node` always exits non-zero, so the `&&` chain stopped there and **Deno and Bun never ran**. Anyone following README's "re-run `npm run test:all`; any new failure is a candidate regression" for a local SDK build was testing one runtime out of three, with nothing to indicate it.
+
+Replaced with `scripts/test-runtimes.sh`, mirroring the existing `scripts/test-pms.sh`: every runtime runs, results are summarised per runtime, and the exit code is non-zero if any failed. `STELLAR_LIVE` is inherited, so `STELLAR_LIVE=0 npm run test:all` still skips the testnet tests everywhere. The same `&&` chain was in the `/test-latest-sdk` skill's step 5 and has been corrected there too.
+
+Worth noting how this survived: every report so far ran the three runtimes as separate commands, which is what the skill's *deterministic* block told you to do. Only the live pass and the README used the chained form, so the aggregate script was never the thing producing the numbers.
 
 ### Three of the 27 type errors are ours, not the SDK's
 
@@ -446,7 +462,7 @@ In `structToNative`, look each field up by its key symbol rather than by index, 
 
 ## Issue 12 — The CommonJS build `require()`s ESM-only dependencies
 
-**Severity: High** — `require("@stellar/stellar-sdk")` fails outright wherever Node's `require(esm)` support is not in play. It loads today only because that support has been on by default since Node 22.12. Found at 16.2.0 by extending the package-manager smoke test to cover the CJS half of the dual build, which nothing had done before. **This is the only open finding that blocks a clean release run.**
+**Severity: High** — `require("@stellar/stellar-sdk")` fails outright wherever Node's `require(esm)` support is not in play. It loads today only because that support has been on by default since Node 22.12. Found at 16.2.0 by extending the package-manager smoke test to cover the CJS half of the dual build, which nothing had done before. **This blocks a clean release run.**
 
 This is issue 1's mirror image. That one was the **ESM** entry failing under Yarn Berry PnP and is fixed. This is the **CJS** entry failing under the same package manager, and it survived because every CJS test in this repo loaded the UMD `dist/` bundle off disk rather than going through the `require` condition in the exports map.
 
@@ -535,3 +551,35 @@ Re-running the upstream cross-reference with comments and import lines stripped 
 - **`contract.SentTransaction.init`** and **`rpc.Server#getContractWasmByHash`** — no upstream test either, but both are exercised here through `signAndSend` and `Client.fromWasmHash`. Covered in substance, never named.
 
 The audit's name matching cuts both ways, and this is the second time it has mattered. Treat every "covered upstream" verdict as triage, not proof.
+
+---
+
+## Issue 14 — Generated TypeScript bindings do not compile as emitted
+
+**Severity: Medium** — the published `stellar-js generate` command reports success and writes a complete package, but following that package's own `npm install && npm run build` instructions fails. Found at 16.2.0 by exercising the installed CLI against a deterministic local WASM contract spec.
+
+The generated `src/client.ts` declares `wasmHash: Buffer | string` and `salt?: Buffer | Uint8Array`. Its generated `package.json` depends on the runtime `buffer` package but does not include `@types/node`, and its generated `tsconfig.json` does not include Node globals. TypeScript therefore reports two `TS2591: Cannot find name 'Buffer'` errors.
+
+Reproduce with `node --test tests/sdk-cli.test.ts`. The test marks the initial compile failure as a `DEVIATION`, then adds `types: ["node"]` as a consumer workaround and proves the generated package compiles and loads. An SDK fix will turn the deviation assertion red.
+
+### Proposed fix
+
+Prefer portable generated types: use `Uint8Array | string` for `wasmHash` and `Uint8Array` for `salt`, since Node `Buffer` already extends `Uint8Array`. If the generated API intentionally requires Node's `Buffer`, add `@types/node` to the generated dev dependencies and `types: ["node"]` to its tsconfig instead.
+
+---
+
+## Issue 15 — Published `stellar-js` CLI fails under Yarn Berry Plug'n'Play
+
+**Severity: Medium** — applications using Yarn Berry PnP can install the package and see its declared `stellar-js` binary, but cannot execute it. `corepack yarn stellar-js --help` fails before Commander prints help:
+
+```text
+Error: EBADF: bad file descriptor, fstat
+  at getSourceSync (node:internal/modules/esm/load:41:14)
+  at load$1 (.../package-managers/yarn-berry/.pnp.loader.mjs:1525:12)
+```
+
+This reproduces independently of issue 12's CommonJS failure: running the CLI alone in `package-managers/yarn-berry` produces the same error. npm, pnpm, and Yarn classic all execute the installed binary successfully. `scripts/test-pms.sh` now runs the module smoke and CLI smoke independently so one failure cannot hide the other.
+
+### Proposed fix
+
+Investigate the published ESM bin entry under Yarn PnP's loader, beginning with the extensionless `bin/stellar-js` entry that imports `../lib/esm/cli/index.js`. Add an upstream PnP install-and-bin smoke test; source-level CLI tests cannot detect this package-layout failure.

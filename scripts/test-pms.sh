@@ -14,42 +14,50 @@ export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 declare -a SUMMARY=()
 
 run_pm() {
-  local name="$1" tool="$2" install_cmd="$3" run_cmd="$4"
+  local name="$1" tool="$2" install_cmd="$3" module_cmd="$4" cli_cmd="$5"
   echo
   echo "=================== $name ==================="
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "SKIP: '$tool' not installed"
-    SUMMARY+=("$name: SKIP (no $tool)")
+    SUMMARY+=("$name: modules SKIP, CLI SKIP (no $tool)")
     return
   fi
-  if (cd "$PM_DIR/$name" && eval "$install_cmd" && eval "$run_cmd"); then
-    SUMMARY+=("$name: PASS")
-  else
-    SUMMARY+=("$name: FAIL")
+  if ! (cd "$PM_DIR/$name" && eval "$install_cmd"); then
+    SUMMARY+=("$name: install FAIL")
+    return
   fi
+
+  local module_result="PASS" cli_result="PASS"
+  (cd "$PM_DIR/$name" && eval "$module_cmd") || module_result="FAIL"
+  (cd "$PM_DIR/$name" && eval "$cli_cmd") || cli_result="FAIL"
+  SUMMARY+=("$name: modules $module_result, CLI $cli_result")
 }
 
 run_pm "npm" npm \
   "npm install --no-audit --no-fund --silent" \
-  "node --test smoke.test.mjs"
+  "node --test smoke.test.mjs" \
+  "npm exec --no -- stellar-js --help"
 
 run_pm "pnpm" pnpm \
   "pnpm install --silent" \
-  "node --test smoke.test.mjs"
+  "node --test smoke.test.mjs" \
+  "pnpm exec stellar-js --help"
 
 run_pm "yarn-classic" yarn \
   "yarn install --silent" \
-  "node --test smoke.test.mjs"
+  "node --test smoke.test.mjs" \
+  "yarn stellar-js --help"
 
 run_pm "yarn-berry" corepack \
   "touch yarn.lock && corepack yarn install" \
-  "corepack yarn node --test smoke.test.mjs"
+  "corepack yarn node --test smoke.test.mjs" \
+  "corepack yarn stellar-js --help"
 
 echo
 echo "=================== SUMMARY ==================="
 rc=0
 for line in "${SUMMARY[@]}"; do
   echo "  $line"
-  [[ "$line" == *": FAIL" ]] && rc=1
+  [[ "$line" == *"FAIL"* ]] && rc=1
 done
 exit "$rc"

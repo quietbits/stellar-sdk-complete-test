@@ -4,13 +4,13 @@ description: Run the full multi-runtime and multi-package-manager test matrix in
 disable-model-invocation: true
 ---
 
-Validate the latest published `@stellar/stellar-sdk` against both axes of this harness and record the outcome in `reports/`.
+Validate the latest published `@stellar/stellar-sdk` across every consumer axis in this harness and record the outcome in `reports/`.
 
 **This repo tests the end-user experience of the published package** — the npm artifact as a real application consumes it, through its public API, across Node/Deno/Bun and npm/pnpm/Yarn classic/Yarn Berry (PnP). It is not a replacement for `js-stellar-sdk`'s own ~125-file unit suite, which tests `src/`. Keep that distinction in view at every step, and especially in step 7 when deciding what is worth testing.
 
 ## Rules
 
-1. **Never modify an existing file under `tests/`.** The expectations *are* the measurement. If a lock looks outdated, report it — do not update it. Adding a **new** test file is allowed, but only in step 9, after the result has been recorded, and only with the user's approval.
+1. **Never modify an existing file under `tests/`.** The expectations _are_ the measurement. If a lock looks outdated, report it — do not update it. Adding a **new** test file is allowed, but only in step 9, after the result has been recorded, and only with the user's approval.
 2. **Never write results from memory.** Save raw output to the scratchpad, then transcribe. Report exactly what ran, including anything skipped.
 3. **Stop at every ⏸ gate** and wait for the user.
 4. Report failures plainly. Do not describe a run as clean when it is not.
@@ -20,16 +20,17 @@ Validate the latest published `@stellar/stellar-sdk` against both axes of this h
 Record actual versions and check the minimums:
 
 ```bash
-node -v; deno -v; bun -v; npm -v; pnpm -v; yarn -v; corepack -v
+node -v; deno -v; bun -v; npm -v; pnpm -v; yarn -v; corepack -v; google-chrome --version
 ```
 
-| Tool | Minimum | If unmet |
-|------|---------|----------|
-| Node | 22.18 | **Abort.** Below this there is no native TS type-stripping and `test:node` cannot run. |
-| Deno | 2.0 | Report the Deno axis as SKIPPED. |
-| Bun | 1.0 | Report the Bun axis as SKIPPED. |
-| pnpm | 9 | **Abort** — used for the root install. |
-| npm / yarn / corepack | any | Report that sandbox as SKIPPED (`scripts/test-pms.sh` already does this). |
+| Tool                  | Minimum                     | If unmet                                                                                                          |
+| --------------------- | --------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Node                  | 22.18                       | **Abort.** Below this there is no native TS type-stripping and `test:node` cannot run.                            |
+| Deno                  | 2.0                         | Report the Deno axis as SKIPPED.                                                                                  |
+| Bun                   | 1.0                         | Report the Bun axis as SKIPPED.                                                                                   |
+| pnpm                  | 9                           | **Abort** — used for the root install.                                                                            |
+| npm / yarn / corepack | any                         | Report that sandbox as SKIPPED (`scripts/test-pms.sh` already does this).                                         |
+| Chrome / Chromium     | any supported by Playwright | Report the browser axis as SKIPPED. Check `PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH` before standard executable paths. |
 
 Keep these versions; every report must list them.
 
@@ -93,22 +94,25 @@ find node_modules/.pnpm -maxdepth 1 -name "@stellar+js-xdr@*" -o -maxdepth 1 -na
 Deterministic first, so testnet flakiness can never be misfiled as an SDK regression:
 
 ```bash
-STELLAR_LIVE=0 npm run test:node
-STELLAR_LIVE=0 npm run test:deno
-STELLAR_LIVE=0 npm run test:bun
+STELLAR_LIVE=0 npm run test:all
 ```
 
 Then the live pass, the package-manager axis, and the type check:
 
 ```bash
-npm run test:node && npm run test:deno && npm run test:bun
+npm run test:all
+npm run test:browser
 npm run test:pm
-npx tsc --noEmit 2>&1 | grep -cE "error TS"
+npm run --silent typecheck 2>&1 | grep -cE "error TS"
 ```
+
+`test:all` runs Node, Deno and Bun and reports all three even when an earlier one fails, then exits non-zero if any did. **Do not chain the three with `&&`** — the surface locks are deliberately red until v17 (issue 4), so Node always exits non-zero and the other two would never run. Comparing runtimes is the whole point of this axis; a failure only on Bun means something different from the same failure everywhere.
 
 Capture each command's full output to the scratchpad. For any failure, capture the assertion diff — the failing test's **name** is what the baseline matches on.
 
 `npm run test:pm` installs into `package-managers/*/`; those lockfiles and `node_modules` are gitignored by design, because that axis tests fresh resolution. Leave them uncommitted.
+
+The browser axis covers every file under the published `dist/` inventory in real Chrome. The package-manager axis also invokes the installed `stellar-js` bin under each manager; its module and CLI checks must both run even if either fails.
 
 ## Step 6 — Diff against the baseline
 
@@ -128,7 +132,12 @@ Every symbol new in this version needs a **behavior** test. Appearing in a surfa
 node .claude/skills/test-latest-sdk/scripts/coverage-audit.mjs
 ```
 
-It enumerates the live public surface (root, `/contract`, `/rpc`, including statics and prototype methods), diffs it against `reports/surface-inventory.json` to find what is genuinely new, and checks whether each new symbol is referenced anywhere in `tests/` outside the two surface-lock files. Exit code 1 means new symbols lack behavior tests. Add `--list-backlog` to print the pre-existing gaps.
+It enumerates the live public surface (including statics and prototype methods) from the four entry points it inventories — root, `/contract`, `/rpc`, `/http-client/axios` — diffs it against `reports/surface-inventory.json` to find what is genuinely new, and checks whether each new symbol is referenced anywhere in `tests/` outside the two surface-lock files. Add `--list-backlog` to print the pre-existing gaps.
+
+**Exit code 1 means one of two things**, both blocking:
+
+- New symbols lack behavior tests.
+- **Exports-map drift.** The package declares eight subpaths; the audit inventories four and records the other four as mirrors (`/base` is a subset of the root; the `/axios*` trio mirror their non-axios twins). If the SDK adds or removes a declared subpath, the audit fails rather than quietly leaving it unmeasured — which is exactly how `/http-client/axios` went unnoticed (ISSUES.md issue 13). Classify a new subpath as an `ENTRY_POINTS` entry if it exposes symbols nothing else does, or a `MIRRORED_SUBPATHS` entry if it does not, and add it to `tests/sdk-package-entrypoints.test.ts`, which locks the same set from the test side.
 
 Read the code, not the changelog, to decide what is new — the script does this by construction. Then use the changelog as a **hint** for what the script cannot see:
 
@@ -165,7 +174,7 @@ If the user approves writing tests for the gaps:
 - **New files only.** Never edit an existing test file. Name by domain, matching the existing `sdk-<area>.test.ts` convention.
 - **Prefer external ground truth** — official spec vectors, upstream fixtures — over asserting that the SDK agrees with itself. A test that signs with `signMessage` and verifies with `verifyMessage` passes even if both drift from the spec.
 - Cover the failure paths too, not just the happy path: invalid input, missing capability, boundary values.
-- Run the new tests on **all three** runtimes, and re-run `npx tsc --noEmit` — new tests must not raise the error count.
+- Run the new tests on **all three** runtimes, and re-run `npm run typecheck` — new tests must not raise the error count.
 - Update the report's coverage section with what was added.
 
 If the user adopts the new version, then update `reports/baseline.json` — its `sdkVersion`, `lastVerified`, counts, and `knownFailures` — and re-snapshot the surface:

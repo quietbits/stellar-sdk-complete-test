@@ -4,7 +4,7 @@
 
 **This repo exists to fully test the end-user experience of `@stellar/stellar-sdk`.**
 
-The subject under test is the **published npm package**, consumed as a real application consumes it: installed from the registry, reached only through its public API, across Node/Deno/Bun and npm/pnpm/Yarn classic/Yarn Berry (PnP).
+The subject under test is the **published npm package**, consumed as a real application consumes it: installed from the registry, reached only through its public API, across Node/Deno/Bun, real-browser bundles, the installed CLI, and npm/pnpm/Yarn classic/Yarn Berry (PnP).
 
 It is **not** a replacement for [`js-stellar-sdk`](https://github.com/stellar/js-stellar-sdk)'s own suite (~125 unit/e2e files testing `src/` for implementation correctness). Different subject; duplicating it adds little.
 
@@ -14,7 +14,7 @@ It is **not** a replacement for [`js-stellar-sdk`](https://github.com/stellar/js
 2. Prefer, in order: public API with **no** upstream test; **malformed or hostile input** through public decoders; **packaging / module format**; **cross-runtime divergence** (Buffer, crypto, `fetch`, XDR).
 3. Prefer external ground truth — official SEP vectors, upstream fixtures — over asserting the SDK agrees with itself. A test that signs with `signMessage` and verifies with `verifyMessage` passes even if both drift from the spec.
 4. Cover failure paths, not just happy paths: invalid input, missing capability, boundary values.
-5. Run new tests on **all three** runtimes and keep `npx tsc --noEmit` at its current error count.
+5. Run new tests on **all three** runtimes and keep `npm run typecheck` at its current error count.
 
 ## Hard rules
 
@@ -24,7 +24,7 @@ It is **not** a replacement for [`js-stellar-sdk`](https://github.com/stellar/js
 
 ## Where things live
 
-- `ISSUES.md` — every finding, with a `Blocks?` column. Issue 7 explains why coverage targets end-user-distinct surface rather than all 472 symbols.
+- `ISSUES.md` — every finding, with a `Blocks?` column. Issue 7 explains why coverage targets end-user-distinct surface rather than every symbol.
 - `reports/baseline.json` — pinned version, toolchain, expected pass/fail, known failures. **The single source of truth for current status**; do not duplicate those numbers elsewhere.
 - `reports/<version>.md` — one report per tested SDK version.
 - `/test-latest-sdk` — the full release-test run (`.claude/skills/test-latest-sdk/`).

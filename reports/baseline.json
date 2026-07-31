@@ -1,8 +1,7 @@
 {
   "_comment": "Expected results for the pinned SDK version. /test-latest-sdk diffs each run against this file: a failure listed in knownFailures is expected, anything else is a new finding. Never add an entry to silence a new failure -- every entry needs a reason and a deferredUntil.",
   "sdkVersion": "16.2.0",
-  "lastVerified": "2026-07-30",
-
+  "lastVerified": "2026-07-31",
   "toolchainMinimums": {
     "node": "22.18",
     "deno": "2.0",
@@ -10,7 +9,6 @@
     "pnpm": "9",
     "_comment": "Node 22.18 is a hard requirement: below it there is no native TS type-stripping and test:node cannot run. Deno and Bun below minimum are reported SKIPPED, not failed."
   },
-
   "toolchainVerifiedWith": {
     "node": "22.22.0",
     "deno": "2.8.3",
@@ -19,29 +17,53 @@
     "pnpm": "10.33.2",
     "yarnClassic": "1.22.22",
     "yarnBerry": "4.5.0",
-    "corepack": "0.34.0"
+    "corepack": "0.34.0",
+    "chrome": "151.0.7922.71"
   },
-
   "resolvedDependencies": {
     "@stellar/js-xdr": "4.0.0",
     "axios": "1.18.0",
     "_comment": "The SDK pins js-xdr and axios exactly but uses ^ ranges elsewhere, so the same SDK version can resolve a different tree later."
   },
-
   "runtimeAxis": {
-    "_comment": "Live runs add 7 tests and remove the 1 placeholder that STELLAR_LIVE=0 substitutes, hence the 6-test delta. Node runs 1 test more than Bun because sdk-umd-bundle is Node-only.",
+    "_comment": "Live runs add 7 tests and remove the 1 placeholder that STELLAR_LIVE=0 substitutes, hence the 6-test delta. Node runs 3 tests more than Bun: sdk-umd-bundle has 2 Node tests versus 1 placeholder, and sdk-cli has 3 Node tests versus 1 placeholder.",
     "deterministic": {
-      "node": { "tests": 444, "pass": 440, "fail": 4 },
-      "deno": { "passed": 52, "steps": 486, "failed": 2, "failedSteps": 4 },
-      "bun": { "tests": 443, "pass": 439, "fail": 4 }
+      "node": {
+        "tests": 450,
+        "pass": 446,
+        "fail": 4
+      },
+      "deno": {
+        "passed": 54,
+        "steps": 490,
+        "failed": 2,
+        "failedSteps": 4
+      },
+      "bun": {
+        "tests": 447,
+        "pass": 443,
+        "fail": 4
+      }
     },
     "live": {
-      "node": { "tests": 450, "pass": 446, "fail": 4 },
-      "deno": { "passed": 52, "steps": 492, "failed": 2, "failedSteps": 4 },
-      "bun": { "tests": 449, "pass": 445, "fail": 4 }
+      "node": {
+        "tests": 456,
+        "pass": 452,
+        "fail": 4
+      },
+      "deno": {
+        "passed": 54,
+        "steps": 496,
+        "failed": 2,
+        "failedSteps": 4
+      },
+      "bun": {
+        "tests": 453,
+        "pass": 449,
+        "fail": 4
+      }
     }
   },
-
   "coverage": {
     "_comment": "From coverage-audit.mjs. publicSymbols/backlog are the script's reported numbers; backlogTrue corrects for name-collision false positives found by reading the tests. The no-upstream-test work list is closed (--vs-upstream reports 0); what remains is the 120 symbols upstream already covers -- see ISSUES.md issue 7. publicSymbols rose 472 -> 510 because the audit now inventories a fourth entry point, ./http-client/axios, which nothing measured before (ISSUES.md issue 13); 34 of those 38 are axios's own API arriving through a verbatim re-export and are excluded with a reason.",
     "publicSymbols": 510,
@@ -58,27 +80,56 @@
     ],
     "_falsePositivesComment": "contract.AssembledTransaction#toJSON was previously listed here; sdk-contract-assembly.test.ts now calls toJSON() for real, so the credit is genuine."
   },
-
   "packageManagerAxis": {
-    "_comment": "yarn-berry went red again when the smoke test was extended to require() the package. Deliberately NOT moved to knownFailures: this is a live SDK defect (ISSUES.md issue 12), not a deferred harness expectation, and a run should not be called clean while a published entry point is unloadable under a supported package manager. The ESM half still passes there -- issue 1 remains fixed.",
-    "npm": "PASS",
-    "pnpm": "PASS",
-    "yarn-classic": "PASS",
-    "yarn-berry": "FAIL",
+    "_comment": "Modules and CLI are run independently so one failure cannot hide the other. Yarn Berry has two live SDK defects: CJS resolution (issue 12) and the installed CLI bin (issue 15). Neither is a knownFailure because both block a clean end-user run.",
+    "npm": {
+      "modules": "PASS",
+      "cli": "PASS"
+    },
+    "pnpm": {
+      "modules": "PASS",
+      "cli": "PASS"
+    },
+    "yarn-classic": {
+      "modules": "PASS",
+      "cli": "PASS"
+    },
+    "yarn-berry": {
+      "modules": "FAIL",
+      "cli": "FAIL"
+    },
     "yarnBerryFailure": {
       "test": "the CommonJS half of the dual build resolves under this package manager",
       "file": "package-managers/yarn-berry/smoke.test.mjs",
       "error": "ERR_REQUIRE_ESM on @noble/hashes/sha2.js from lib/cjs/errors/transaction_failed.js",
       "issue": 12,
       "esmHalf": "PASS"
+    },
+    "yarnBerryCliFailure": {
+      "command": "corepack yarn stellar-js --help",
+      "error": "EBADF: bad file descriptor, fstat in the Yarn PnP ESM loader",
+      "issue": 15
     }
   },
-
+  "browserAxis": {
+    "_comment": "Real Chrome loads each published UMD artifact through a script element and exercises global attachment, crypto, XDR and HTTP.",
+    "stellar-sdk.js": "PASS",
+    "stellar-sdk.min.js": "PASS",
+    "stellar-sdk-axios.js": "PASS",
+    "stellar-sdk-axios.min.js": "PASS"
+  },
+  "cliAxis": {
+    "help": "PASS",
+    "version": "PASS",
+    "invalidArguments": "PASS",
+    "generateFromLocalWasm": "PASS",
+    "generatedPackageTypecheck": "FAIL",
+    "generatedPackageTypecheckIssue": 14
+  },
   "typeCheck": {
     "tscErrors": 27,
     "_comment": "30 at 16.0.0; 3 fixed by getContractInstance typings, 0 new. 12 blocked on the js-xdr TS/ESM release, 9 residual SDK RPC-layer, 3 further SDK gaps, 3 harness-owned. See ISSUES.md issue 2."
   },
-
   "knownFailures": [
     {
       "suite": "stellar-sdk public API surface",
@@ -113,11 +164,19 @@
       "issue": 4
     }
   ],
-
   "expectedSurface": {
     "_comment": "Symbol counts the locks currently assert, versus what 16.2.0 actually exports. Diff by set difference, not by reading truncated assertion output: a truncated diff can hide a removal, and removals are breaking while additions are not.",
-    "rootExports": { "locked": 77, "actual": 80 },
-    "contractExports": { "locked": 10, "actual": 11 },
-    "keypairInstance": { "locked": 13, "actual": 16 }
+    "rootExports": {
+      "locked": 77,
+      "actual": 80
+    },
+    "contractExports": {
+      "locked": 10,
+      "actual": 11
+    },
+    "keypairInstance": {
+      "locked": 13,
+      "actual": 16
+    }
   }
 }

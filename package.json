@@ -6,12 +6,15 @@
   "scripts": {
     "test:node": "node --test tests/*.test.ts",
     "test:deno": "deno test --no-check --allow-net --allow-read --allow-env tests/",
-    "test:bun": "bun test tests/",
-    "test:all": "npm run test:node && npm run test:deno && npm run test:bun",
-    "test:pm": "bash scripts/test-pms.sh"
+    "test:bun": "bun test tests/*.test.ts",
+    "test:all": "bash scripts/test-runtimes.sh",
+    "test:browser": "node --test browser-tests/*.test.mjs",
+    "test:pm": "bash scripts/test-pms.sh",
+    "typecheck": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",
+    "playwright": "^1.62.1",
     "typescript": "~6.0.3"
   },
   "dependencies": {

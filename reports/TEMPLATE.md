@@ -26,6 +26,7 @@ was not run, write SKIPPED and why — never leave a field implying it passed.
 | Yarn classic | |
 | Yarn Berry | |
 | corepack | |
+| Chrome / Chromium | |
 
 ## Resolved dependencies
 
@@ -57,12 +58,31 @@ Versions crossed: `<FROM>` → `<TO>`
 
 ### Package-manager axis
 
-| Manager | Result |
-|---------|--------|
-| npm | |
-| pnpm | |
-| yarn-classic | |
-| yarn-berry (PnP) | |
+| Manager | Modules | CLI bin |
+|---------|---------|---------|
+| npm | | |
+| pnpm | | |
+| yarn-classic | | |
+| yarn-berry (PnP) | | |
+
+### Browser axis
+
+| Artifact | Result |
+|----------|--------|
+| `stellar-sdk.js` | |
+| `stellar-sdk.min.js` | |
+| `stellar-sdk-axios.js` | |
+| `stellar-sdk-axios.min.js` | |
+
+### CLI and artifact axis
+
+| Check | Result |
+|-------|--------|
+| `stellar-js --help` / `--version` | |
+| Invalid arguments | |
+| Generate from local WASM | |
+| Generated package type check and load | |
+| Exports, bin and `dist/` artifact inventory | |
 
 ### Type check
 
