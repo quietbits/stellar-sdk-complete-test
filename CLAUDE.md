@@ -21,6 +21,7 @@ It is **not** a replacement for [`js-stellar-sdk`](https://github.com/stellar/js
 - **Never modify an existing file under `tests/` to make a run pass.** Those expectations are the measurement. Adding a new test file is fine; rewriting an assertion to go green is not. If a lock looks outdated, report it.
 - **Never write results from memory.** Save command output, then transcribe. Report what actually ran, including anything skipped.
 - Do not codify a known defect as expected behavior. Record it in `ISSUES.md` and leave it unasserted, or pin it with an explicit comment saying it is a deviation.
+- **Only published versions.** The target must resolve from the npm registry. Never repoint the harness at a git branch, a local build, a tarball, or a `file:`/`link:` dependency — `reports/baseline.json` is keyed to an immutable published version and the packaging axis measures what the registry ships. Unpublished changes belong in `js-stellar-sdk`'s own suite.
 
 ## Where things live
 

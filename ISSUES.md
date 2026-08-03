@@ -9,7 +9,7 @@ The pinned SDK version, the toolchain it was verified against, and the current e
 | 1 | SDK fails to load under Yarn Berry (PnP) — **ESM entry** | **High** | install/resolution | no | ✅ **Fixed** — but see issue 12 for the CJS entry |
 | 2 | Published types lag the runtime API | Medium | TypeScript DX | no | ⏳ **Open**, improved: 30 → 27 errors, 3 fixed, 0 new |
 | 3 | Hand-rolled ledger XDR fixtures don't decode | Low | test data only | no | ✔️ Mitigated (covered live); no SDK fix needed |
-| 4 | Surface locks intentionally red pending v17 | None (harness) | test expectations | no | 📌 **Deferred to v17** — additive-only |
+| 4 | Surface locks intentionally red pending v17 | None (harness) | test expectations | no | 📌 **Deferred to v17** — additive so far; v17 is a js-xdr rewrite, not an API redesign |
 | 5 | StrKey accepts 4 of 15 SEP-23 invalid vectors | **Medium** | input validation | no | 🔴 **Open** — 3 new, 1 known upstream |
 | 6 | `TimeoutInfinite` transactions fail `Utils.validateTimebounds` | Low | API consistency | no | 🔴 **Open** — two SDK APIs disagree |
 | 7 | Coverage retargeted to end-user-distinct surface | None (harness) | test coverage | no | ✅ **Work list closed** — all 28 no-upstream-test symbols covered |
@@ -88,7 +88,7 @@ Reproduce with `npm run typecheck` (or `deno check tests/`).
 
 ### The v17 wait still applies
 
-The original plan was to wait for the TypeScript/ESM rewrite of `@stellar/js-xdr` rather than hand-write the XDR-primitive types. **That release has not landed:** `@stellar/js-xdr` is still **`4.0.0`, still CommonJS, and still ships no `.d.ts` at all**. The SDK's `Int256 extends LargeInt` therefore still inherits an untyped base. Issue 1's fix converted only the SDK's *vendored* copy to ESM, which does not help typing.
+The original plan was to wait for the TypeScript/ESM rewrite of `@stellar/js-xdr` rather than hand-write the XDR-primitive types. **That release has not landed:** in the published SDK `@stellar/js-xdr` is still **`4.0.0`, still CommonJS, and still ships no `.d.ts` at all**. The rewrite has reached `5.0.0-rc.1` on the unpublished `v17-feature-branch` (see issue 4), which is not a testable target here — see README's "Scope: published versions only". The SDK's `Int256 extends LargeInt` therefore still inherits an untyped base. Issue 1's fix converted only the SDK's *vendored* copy to ESM, which does not help typing.
 
 **Do not hand-write these now** — they would be superseded. Re-measure once the new `js-xdr` ships with v17.
 
@@ -156,6 +156,18 @@ Covered by a **live** call in `tests/sdk-live-network.test.ts`, where the RPC re
 **Severity: None** — harness expectations, not an SDK defect. **Deliberately left failing**; do not "fix" by regenerating the locks in isolation.
 
 `16.2.0` added five public symbols. The golden surface locks are still pinned to the `16.0.0` surface, so the surface-lock tests fail identically on all three runtimes — see `knownFailures` in [`reports/baseline.json`](reports/baseline.json) for exactly which. This is held until the v17 major (with its js-xdr overhaul) so the locks are re-baselined once rather than twice.
+
+### What v17 is, and what to expect from it
+
+v17 carries the `@stellar/js-xdr` rewrite: JavaScript with hand-written type declarations replaced by TypeScript with real types. The expectation is **correctness fixes and useful add-ons, not an API redesign** — so the additive-only reasoning above should still hold at v17, and a major version number here reflects the dependency rewrite rather than a deliberate break. The unpublished `v17-feature-branch` is consistent with that: it moves the pin to `@stellar/js-xdr@^5.0.0-rc.1` while *keeping* `4.0.0` alongside it under the alias `js-xdr-v4`, which is a compatibility path rather than a clean break.
+
+Treat that as an expectation, not a guarantee. When v17 lands, confirm it the way the table below was confirmed — by set-difference on the lock sets, looking for **removals** — rather than reading additive drift into a truncated assertion diff.
+
+Three things are already known to change at v17, and none is a defect:
+
+- **A ninth export subpath, `./xdr`.** The branch declares it; published `16.2.0` declares eight. Both `tests/sdk-package-entrypoints.test.ts` and the audit's exports-map drift guard will fail on the subpath-set lock. That is the designed signal to widen the audit's `ENTRY_POINTS` in the re-baseline pass — not something to act on before the release.
+- **The typecheck count should drop sharply.** 12 of the 27 errors are blocked on exactly this release (see issue 2). A large decrease is the payoff, not a regression; re-measure rather than hand-writing those types beforehand.
+- **`js-xdr` stops being an exact pin.** `16.2.0` depends on `4.0.0` exactly; the branch uses the range `^5.0.0-rc.1`. `resolvedDependencies` in [`reports/baseline.json`](reports/baseline.json) currently records js-xdr and axios as the two exact pins — at v17 js-xdr leaves that set, so the same SDK version can resolve a different js-xdr over time.
 
 ### The additions are purely additive
 

@@ -4,7 +4,7 @@
 
 **This repo exists to fully test the end-user experience of `@stellar/stellar-sdk`.**
 
-The subject under test is the **published npm package**, consumed the way a real application consumes it: installed from the registry, reached only through its public API, on the runtimes and package managers users actually have. Everything here follows from that.
+The subject under test is the **published npm package**, consumed the way a real application consumes it: installed from the registry, reached only through its public API, on the runtimes and package managers users actually have. Everything here follows from that. Concretely: if a version is not on the npm registry, it cannot be tested here — see [Scope](#scope-published-versions-only).
 
 It is **not** a replacement for the SDK's own test suite. [`js-stellar-sdk`](https://github.com/stellar/js-stellar-sdk) has roughly 125 unit and e2e test files covering `src/` for implementation correctness. That is a different subject, and duplicating it adds little:
 
@@ -209,6 +209,14 @@ Which failures are expected — and the exact counts, tested version, and toolch
 
 All findings, evidence, and proposed fixes live in **[ISSUES.md](ISSUES.md)**. Per-version results live in **[`reports/`](reports/)**.
 
-## Refactor-validation workflow
+## Scope: published versions only
 
-To test a local SDK build against this harness, replace the package files in `node_modules` (with pnpm, under `node_modules/.pnpm/@stellar+stellar-sdk@<ver>/`) and run `npm run test:all`, `npm run test:browser`, and `npm run test:pm`. Any new failure is a candidate regression.
+The subject under test is always a version of `@stellar/stellar-sdk` that exists on the npm registry. This harness is not for validating unpublished work — a git branch, a local build swapped into `node_modules`, a `file:`/`link:` reference, or a `npm pack` tarball are all out of scope.
+
+That is a deliberate limit, not a missing feature. Three things here only mean something against a real published artifact:
+
+- **`reports/baseline.json` is keyed to an exact `sdkVersion`.** Expected pass/fail counts, known failures, and resolved transitive versions are all pinned to it. An unpublished build has no baseline to diff against, so a run produces numbers with nothing to compare them to.
+- **The packaging axis measures what the registry ships.** `sdk-package-artifacts`, `sdk-package-entrypoints`, and the UMD/browser tests read the installed `dist/`, `bin/`, and exports map. A linked or hand-swapped tree does not honor the package's `files` field, so those tests would be checking files a real consumer never receives.
+- **Reports must be reproducible.** A published version is immutable; a branch head moves. `reports/<version>.md` would not describe a state anyone could re-run.
+
+To validate unpublished SDK changes, use [`js-stellar-sdk`](https://github.com/stellar/js-stellar-sdk)'s own suite, which tests `src/` directly and is built for exactly that. Bring the change here once it is released.

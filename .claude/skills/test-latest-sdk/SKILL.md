@@ -48,6 +48,8 @@ Read the current pin from `package.json`. Report both to the user:
 
 ⏸ **Ask the user to confirm before testing.** Do not proceed unprompted.
 
+If the user names a target that is not a published version — a branch, a commit, a local build, a tarball — stop and say it is out of scope for this harness. See README's "Scope: published versions only".
+
 ## Step 3 — Review the changelog
 
 ```bash
