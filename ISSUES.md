@@ -7,7 +7,7 @@ The pinned SDK version, the toolchain it was verified against, and the current e
 | # | Issue | Severity | Surface | Blocks? | Status |
 |---|-------|----------|---------|---------|--------|
 | 1 | SDK fails to load under Yarn Berry (PnP) — **ESM entry** | **High** | install/resolution | no | ✅ **Fixed** — but see issue 12 for the CJS entry |
-| 2 | Published types lag the runtime API | Medium | TypeScript DX | no | ⏳ **Open**, improved: 30 → 27 errors, 3 fixed, 0 new |
+| 2 | Published types lag the runtime API | Medium | TypeScript DX | no | ⏳ **Open**, improving — current error count in [`reports/baseline.json`](reports/baseline.json) |
 | 3 | Hand-rolled ledger XDR fixtures don't decode | Low | test data only | no | ✔️ Mitigated (covered live); no SDK fix needed |
 | 4 | Surface locks intentionally red pending v17 | None (harness) | test expectations | no | 📌 **Deferred to v17** — additive so far; v17 is a js-xdr rewrite, not an API redesign |
 | 5 | StrKey accepts 4 of 15 SEP-23 invalid vectors | **Medium** | input validation | no | 🔴 **Open** — 3 new, 1 known upstream |
@@ -92,7 +92,7 @@ The original plan was to wait for the TypeScript/ESM rewrite of `@stellar/js-xdr
 
 **Do not hand-write these now** — they would be superseded. Re-measure once the new `js-xdr` ships with v17.
 
-### Breakdown of the 27
+### Breakdown of the errors at 16.2.0
 
 #### Blocked on the js-xdr TS/ESM release — 12 errors
 
@@ -130,24 +130,11 @@ Unchanged for the two main groups: widen the `GetTransactionResponse` union and 
 
 ## Issue 3 — Hand-rolled ledger XDR fixtures don't decode
 
-**Severity: Low** — test-data limitation, not an SDK defect. Unchanged at 16.2.0.
+> **✔️ Closed at `16.2.0`** — a test-data limitation, never an SDK defect. Condensed in place; the original evidence and root-cause sections are in `git log -p ISSUES.md`.
 
-### Evidence
+**Severity: Low.** The original `getLatestLedger` test used hand-authored base64 `headerXdr` / `metadataXdr` fixtures. `getLatestLedger` XDR-decodes `LedgerHeader` and `LedgerCloseMeta` and requires the buffer to be fully consumed, so the invalid fixtures threw `XDR Read Error: invalid XDR contract typecast - source buffer not entirely consumed`.
 
-The static `headerXdr` / `metadataXdr` fixtures in the original `getLatestLedger` test fail to decode:
-
-```
-XDR Read Error: invalid XDR contract typecast - source buffer not entirely consumed
-  at parseRawLatestLedger (.../rpc/parsers.js)
-```
-
-### Root cause
-
-`getLatestLedger` XDR-decodes `LedgerHeader` and `LedgerCloseMeta` and requires the buffer to be fully consumed. The hand-authored base64 fixtures are not valid serializations of those types, so decoding throws.
-
-### Resolution
-
-Covered by a **live** call in `tests/sdk-live-network.test.ts`, where the RPC returns genuinely valid XDR. This passes at 16.2.0. If a deterministic fixture is ever required, generate it programmatically from the SDK's own `xdr.LedgerHeader` / `xdr.LedgerCloseMeta` constructors rather than hand-typing it, so it stays valid for the pinned version.
+Resolved by covering it with a **live** call in `tests/sdk-live-network.test.ts`, where the RPC returns genuinely valid XDR. If a deterministic fixture is ever required, generate it from the SDK's own `xdr.LedgerHeader` / `xdr.LedgerCloseMeta` constructors rather than hand-typing it, so it stays valid for the pinned version.
 
 ---
 
@@ -376,13 +363,9 @@ Deliberately uncovered, for the same reason as issue 5: a test pinning the curre
 
 ### `npm run test:all` only ever ran Node — **fixed**
 
-The script was `npm run test:node && npm run test:deno && npm run test:bun`. Because the surface locks are deliberately red until v17 (issue 4), `test:node` always exits non-zero, so the `&&` chain stopped there and **Deno and Bun never ran**. Anyone following README's "re-run `npm run test:all`; any new failure is a candidate regression" for a local SDK build was testing one runtime out of three, with nothing to indicate it.
+The script was `npm run test:node && npm run test:deno && npm run test:bun`. Because the surface locks are deliberately red until v17 (issue 4), `test:node` always exits non-zero, so the `&&` chain stopped there and **Deno and Bun never ran**. Replaced with `scripts/test-runtimes.sh`, mirroring `scripts/test-pms.sh`: every runtime runs, results are summarised per runtime, `STELLAR_LIVE` is inherited, and the exit code is non-zero if any failed. The same `&&` chain was in the skill's step 5 and was corrected there too. It survived because every report ran the three runtimes as separate commands, so the aggregate script was never the thing producing the numbers.
 
-Replaced with `scripts/test-runtimes.sh`, mirroring the existing `scripts/test-pms.sh`: every runtime runs, results are summarised per runtime, and the exit code is non-zero if any failed. `STELLAR_LIVE` is inherited, so `STELLAR_LIVE=0 npm run test:all` still skips the testnet tests everywhere. The same `&&` chain was in the `/test-latest-sdk` skill's step 5 and has been corrected there too.
-
-Worth noting how this survived: every report so far ran the three runtimes as separate commands, which is what the skill's *deterministic* block told you to do. Only the live pass and the README used the chained form, so the aggregate script was never the thing producing the numbers.
-
-### Three of the 27 type errors are ours, not the SDK's
+### Three of the type errors are ours, not the SDK's
 
 - `tests/sdk-method-surface.test.ts` imports `SorobanDataBuilder` and never uses it (`noUnusedLocals`).
 - The `it.each` shim in `tests/helpers/assert.ts` types its cases as `readonly unknown[]`, so every `.each` callback parameter arrives as `unknown` and needs a cast at the call site to be used.
@@ -397,7 +380,6 @@ Every table in this repo trips `MD060/table-column-style`, because the separator
 ### Minor
 
 - `reports/` has no index; the file list is the index. Fine at two reports, worth revisiting at ten.
-- The layout tree in `README.md` cites `e.g. 16.2.0.md` as an example filename, which will read as stale once later versions are tested.
 
 ---
 
@@ -534,35 +516,15 @@ Whichever route, a CI job that runs `node --no-experimental-require-module -e 'r
 
 ## Issue 13 — Coverage audit was blind to five of eight exported subpaths
 
-**Severity: None** — harness measurement, not an SDK defect. Recorded because the number it produced was quietly incomplete, and because the fix is what stops that recurring.
+> **✅ Closed** — a harness measurement defect, not an SDK one. Condensed in place; the per-subpath redundancy table and the full mis-credit analysis are in `git log -p ISSUES.md`.
 
-`coverage-audit.mjs` inventoried three entry points — the root, `./contract`, and `./rpc`. The package declares **eight** subpaths. Nothing measured `./base`, `./axios`, `./axios/contract`, `./axios/rpc`, or `./http-client/axios`, and no test imported any of them, so nothing verified they resolved at all under any runtime or package manager.
+**Severity: None.** `coverage-audit.mjs` inventoried three entry points — the root, `./contract`, and `./rpc` — while the package declares **eight** subpaths. Nothing measured `./base`, the `./axios*` trio, or `./http-client/axios`, and no test imported any of them, so nothing verified they resolved at all under any runtime or package manager. Most of that surface proved redundant (the `./axios*` trio mirror their non-axios twins; `./base` is a strict subset of the root), so the symbol count barely moved — but "the count was nearly right" is not "the measurement was sound", and what went untested was *resolution*, the axis issues 1 and 12 both live on.
 
-Most of the unmeasured surface turned out to be redundant, which is why the symbol count barely moved:
+What the fix put in place, and why the blind spot cannot silently reopen:
 
-| Subpath | Relationship | Novel symbols |
-|---------|--------------|---------------|
-| `./axios`, `./axios/contract`, `./axios/rpc` | identical surface to their non-axios twins | 0 |
-| `./base` | strict subset of the root | 0 |
-| `./http-client/axios` | genuinely distinct | `httpClient`, `create`, `CancelToken` |
-
-But "the count was nearly right" is not the same as "the measurement was sound" — the *resolution* of those five subpaths was untested, and that is the axis issue 1 and issue 12 both live on.
-
-### What changed
-
-- `./http-client/axios` is now a fourth `ENTRY_POINTS` entry. Its three SDK-owned symbols are behavior-tested; the ~34 statics that come with it are axios's own API surfacing through a verbatim re-export, excluded with a reason in `reports/coverage-exclusions.json`.
-- The four mirrors are recorded as `MIRRORED_SUBPATHS` — classified, not counted twice.
-- **A drift guard**: the audit now reads the SDK's own `exports` map and exits non-zero if a declared subpath is neither an entry point nor a recorded mirror. A new subpath in v17 fails the audit instead of going unmeasured. `tests/sdk-package-entrypoints.test.ts` locks the same set from the test side.
-- `reports/surface-inventory.json` regenerated once, deliberately, for the widened entry-point set: 472 → 510 symbols.
-
-### Two mis-credits found while re-checking, both now corrected
-
-Re-running the upstream cross-reference with comments and import lines stripped showed three of the "covered upstream" verdicts resting on incidental text:
-
-- **`rpc.Server#getLedgerEntry`** — credited by two `//` comments in `test/unit/server/soroban/request_airdrop.test.ts`. No upstream test calls it. It was a genuine hole; now covered in `tests/sdk-rpc-errors.test.ts`.
-- **`contract.SentTransaction.init`** and **`rpc.Server#getContractWasmByHash`** — no upstream test either, but both are exercised here through `signAndSend` and `Client.fromWasmHash`. Covered in substance, never named.
-
-The audit's name matching cuts both ways, and this is the second time it has mattered. Treat every "covered upstream" verdict as triage, not proof.
+- `./http-client/axios` became a fourth `ENTRY_POINTS` entry, contributing `httpClient`, `create`, and `CancelToken`; the ~34 statics arriving with it are axios's own API through a verbatim re-export, excluded with a reason in `reports/coverage-exclusions.json`. The four mirrors are recorded as `MIRRORED_SUBPATHS` — classified, not counted twice. `reports/surface-inventory.json` was regenerated once, deliberately, for the widened set: 472 → 510 symbols.
+- **A drift guard**: the audit reads the SDK's own `exports` map and exits non-zero if a declared subpath is neither an entry point nor a recorded mirror, so a new subpath fails loudly instead of going unmeasured. `tests/sdk-package-entrypoints.test.ts` locks the same set from the test side.
+- Re-running the upstream cross-reference with comments and import lines stripped found three "covered upstream" verdicts resting on incidental text — `rpc.Server#getLedgerEntry` was a genuine hole, now covered in `tests/sdk-rpc-errors.test.ts`; `contract.SentTransaction.init` and `rpc.Server#getContractWasmByHash` were covered in substance but never named. **Treat every "covered upstream" verdict as triage, not proof** — the audit's name matching cuts both ways, and that is the second time it has mattered.
 
 ---
 

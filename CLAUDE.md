@@ -26,6 +26,7 @@ It is **not** a replacement for [`js-stellar-sdk`](https://github.com/stellar/js
 ## Where things live
 
 - `ISSUES.md` — every finding, with a `Blocks?` column. Issue 7 explains why coverage targets end-user-distinct surface rather than every symbol.
+- **Issue numbers are permanent.** They are cited from `tests/`, `reports/`, and the skill, and test files are frozen — so an issue is never deleted or renumbered, and every number must keep resolving. When one is verified fixed in a published version, **condense it in place**: keep the number, title, severity, a short what-it-was, the version that fixed it, and anything other issues still reference; drop reproduction commands, breakdown tables, and proposed fixes, which remain in `git log -p ISSUES.md`. Decision records (issue 10) and issues with a still-open half (issue 1, pending issue 12) keep their full text.
 - `reports/baseline.json` — pinned version, toolchain, expected pass/fail, known failures. **The single source of truth for current status**; do not duplicate those numbers elsewhere.
 - `reports/<version>.md` — one report per tested SDK version.
 - `/test-latest-sdk` — the full release-test run (`.claude/skills/test-latest-sdk/`).

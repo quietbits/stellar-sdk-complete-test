@@ -95,7 +95,7 @@ The coverage backlog count reported by the audit is a **progress signal, not a t
 │   ├── baseline.json            #   expected results + known-failing tests
 │   ├── surface-inventory.json   #   known public API surface (generated)
 │   ├── coverage-exclusions.json #   symbols deliberately not covered, with reasons
-│   └── <version>.md             #   e.g. 16.2.0.md
+│   └── <version>.md             #   one per tested version
 │
 ├── .claude/skills/
 │   └── test-latest-sdk/         # /test-latest-sdk — the full release-test run

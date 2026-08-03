@@ -186,3 +186,5 @@ node .claude/skills/test-latest-sdk/scripts/coverage-audit.mjs --update-inventor
 ```
 
 Never update the baseline to paper over a new failure, and never re-snapshot the inventory to make a coverage gap disappear. Each baseline entry needs a recorded reason.
+
+If this run verifies that a finding recorded in `ISSUES.md` is fixed, **condense that issue in place** — never delete or renumber it, because its number is cited from `tests/` and `reports/` and must keep resolving. Keep the number, title, severity, a short what-it-was, the version that fixed it, and anything other issues still reference; drop reproduction commands, breakdown tables, and proposed fixes, which remain in `git log -p ISSUES.md`. Leave decision records and partially-fixed issues at full length. Note the condensing in the report.
